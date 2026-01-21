@@ -253,7 +253,7 @@
     </div>
 
     <script>
-        const BACKEND_URL = 'http://localhost:3001';
+        const BACKEND_URL = 'https://learn-near-backend.fly.dev';
 
         const examples = {
             counter: `import { NearBindgen, view, call } from "near-sdk-js";
@@ -431,7 +431,7 @@ class HelloWorldContract {
             } catch (error) {
                 hideLoading();
                 showResult(false, 'Failed to connect to backend', {
-                    error: error.message || 'Make sure the backend server is running on http://localhost:3001'
+                    error: error.message || 'Make sure the backend server is running on https://learn-near-backend.fly.dev'
                 });
             }
         }

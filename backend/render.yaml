@@ -1,0 +1,31 @@
+# Render Blueprint - NEAR Backend Service
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: near-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    repo: https://github.com/peterchijioke/Learn-near  # Update this to your repo URL
+    branch: rollback-to-near-cli  # Your current branch
+    rootDir: backend
+    plan: standard  # standard plan recommended for Rust compilation (needs more memory)
+    region: oregon  # or your preferred region
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: NODE_ENV
+        value: production
+      - key: NEAR_NETWORK
+        value: testnet
+      # Add these via Render Dashboard (not in yaml for security):
+      # - key: NEAR_ACCOUNT_ID
+      #   sync: false
+      # - key: NEAR_PRIVATE_KEY
+      #   sync: false
+    disk:
+      name: near-builds-cache
+      mountPath: /app/persistent-builds
+      sizeGB: 1  # Cache for compiled contracts

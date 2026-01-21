@@ -1,12 +1,206 @@
-node_modules
-npm-debug.log
-temp-builds
-target
-.git
-.gitignore
-README.md
-.env
-.env.local
-*.log
-.DS_Store
+# ============================================
+# DOCKERIGNORE FOR NEAR BACKEND
+# ============================================
 
+# Dependencies - will be installed fresh in container
+node_modules/
+**/node_modules/
+# Note: Keep package-lock.json for npm ci in Dockerfile
+
+# ============================================
+# Build artifacts and caches
+# ============================================
+persistent-builds-js/
+persistent-builds/
+temp-builds/
+target/
+shared-target/
+build/
+dist/
+out/
+*.wasm
+
+# Jsroute test/dev folder
+Jsroute/
+
+# Strange/accidental directories
+~
+~*
+
+# ============================================
+# Rust build artifacts
+# ============================================
+**/target/
+**/*.rs.bk
+# Note: Keep Cargo.lock in base-project for reproducible builds
+
+# ============================================
+# NEAR artifacts
+# ============================================
+.near/
+.near-credentials/
+neardev/
+*.near
+
+# ============================================
+# Git
+# ============================================
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# ============================================
+# IDE and editor files
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+.history/
+
+# ============================================
+# OS files
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+desktop.ini
+*.lnk
+$RECYCLE.BIN/
+
+# ============================================
+# Logs and debug
+# ============================================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+debug.log
+.pnpm-debug.log*
+
+# ============================================
+# Environment files (sensitive!)
+# ============================================
+.env
+.env.*
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+*.local
+
+# ============================================
+# Documentation (not needed in container)
+# ============================================
+README.md
+CHANGELOG.md
+CONTRIBUTING.md
+*.md
+docs/
+documentation/
+LICENSE
+LICENSE.md
+
+# ============================================
+# Test files
+# ============================================
+test/
+tests/
+__tests__/
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+test-*.js
+test-*.sh
+test-*.json
+coverage/
+.nyc_output/
+jest.config.*
+*.test.mjs
+
+# ============================================
+# Docker files (prevent recursive issues)
+# ============================================
+Dockerfile
+Dockerfile.*
+docker-compose*.yml
+docker-compose*.yaml
+.dockerignore
+
+# ============================================
+# Deployment configs (not needed inside container)
+# ============================================
+fly.toml
+render.yaml
+vercel.json
+netlify.toml
+railway.json
+heroku.yml
+Procfile
+app.yaml
+*.deploy.json
+
+# ============================================
+# Development/debugging scripts
+# ============================================
+build-contract-original.js
+
+# ============================================
+# Temporary and cache files
+# ============================================
+*.tmp
+*.temp
+*.cache
+.cache/
+.npm/
+.eslintcache
+.parcel-cache/
+.turbo/
+*.pid
+*.seed
+*.pid.lock
+
+# ============================================
+# Windows specific
+# ============================================
+*.exe
+*.dll
+*.obj
+*.pdb
+*.lib
+*.exp
+*.ilk
+
+# ============================================
+# TypeScript build info
+# ============================================
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# ============================================
+# Misc
+# ============================================
+*.bak
+*.backup
+*.old
+*.orig
+.npmrc
+.yarnrc
+.yarnrc.yml
+yarn.lock
+pnpm-lock.yaml
