@@ -6,6 +6,12 @@ import { buildContract, initializeTemplate } from './build-contract-optimized.js
 import { buildRustContract } from './build-rust-contract.js'
 import { deployContract, callContract, viewContract, areCredentialsConfigured } from './deploy-contract.js'
 
+// DEVELOPMENT ONLY: Hardcoded NEAR credentials
+// WARNING: Never commit real credentials to production code
+process.env.NEAR_ACCOUNT_ID = 'wisdomfornear.testnet'
+process.env.NEAR_PRIVATE_KEY = 'ed25519:2pw2KaFjCbXDFRmL18KFoUUUiaVDFi6499DrWdbGTh2uH4n2KgE3Pv67BwsB98gLuuFxJkdPRY2gbgTf5N36MnVj'
+process.env.NEAR_NETWORK = 'testnet'
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 

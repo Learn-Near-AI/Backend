@@ -113,6 +113,21 @@
             cursor: not-allowed;
         }
 
+        #deployBtn {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+        }
+
+        #deployBtn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(17, 153, 142, 0.4);
+        }
+
+        #deployBtn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         #clearBtn {
             background: #f5f5f5;
             color: #666;
@@ -213,23 +228,80 @@
         .example-btn:hover {
             background: #5568d3;
         }
+
+        .language-selector {
+            margin-bottom: 20px;
+        }
+
+        .language-selector label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #333;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .language-tabs {
+            display: flex;
+            gap: 10px;
+            background: #f5f5f5;
+            padding: 5px;
+            border-radius: 8px;
+        }
+
+        .language-tab {
+            flex: 1;
+            padding: 12px 20px;
+            background: transparent;
+            color: #666;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+            text-transform: none;
+            letter-spacing: normal;
+        }
+
+        .language-tab:hover {
+            background: #e0e0e0;
+        }
+
+        .language-tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            transform: none;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>🚀 NEAR Contract Compiler</h1>
-            <p>Write and compile JavaScript NEAR smart contracts</p>
+            <p>Write and compile JavaScript and Rust NEAR smart contracts</p>
         </div>
 
         <div class="content">
+            <div class="language-selector">
+                <label>Select Language</label>
+                <div class="language-tabs">
+                    <button class="language-tab active" onclick="selectLanguage('JavaScript')">JavaScript</button>
+                    <button class="language-tab" onclick="selectLanguage('Rust')">Rust</button>
+                </div>
+            </div>
+
             <div class="editor-section">
-                <label for="contractCode">Contract Code (JavaScript)</label>
+                <label for="contractCode">Contract Code (<span id="currentLanguage">JavaScript</span>)</label>
                 <textarea id="contractCode" placeholder="Write your NEAR contract code here..."></textarea>
             </div>
 
             <div class="button-group">
                 <button id="compileBtn" onclick="compileContract()">Compile Contract</button>
+                <button id="deployBtn" onclick="deployContract()" disabled>Deploy Contract</button>
                 <button id="clearBtn" onclick="clearEditor()">Clear</button>
             </div>
 
@@ -244,19 +316,19 @@
 
             <div class="example-section">
                 <h3>📝 Example Contracts</h3>
-                <button class="example-btn" onclick="loadExample('counter')">Counter Contract</button>
-                <button class="example-btn" onclick="loadExample('greeting')">Greeting Contract</button>
-                <button class="example-btn" onclick="loadExample('storage')">Storage Contract</button>
-                <button class="example-btn" onclick="loadExample('hello_world')">Hello World Contract</button>
+                <div id="exampleButtons"></div>
             </div>
         </div>
     </div>
 
     <script>
-        const BACKEND_URL = 'https://learn-near-backend.fly.dev';
+        const BACKEND_URL = 'http://localhost:3001';
+        let currentLanguage = 'JavaScript';
+        let compiledWasm = null;
 
         const examples = {
-            counter: `import { NearBindgen, view, call } from "near-sdk-js";
+            JavaScript: {
+                counter: `import { NearBindgen, view, call } from "near-sdk-js";
 
 @NearBindgen({})
 class CounterContract {
@@ -286,7 +358,7 @@ class CounterContract {
   }
 }`,
 
-            greeting: `import { NearBindgen, view, call } from "near-sdk-js";
+                greeting: `import { NearBindgen, view, call } from "near-sdk-js";
 
 @NearBindgen({})
 class GreetingContract {
@@ -304,7 +376,7 @@ class GreetingContract {
   }
 }`,
 
-            storage: `import { NearBindgen, view, call } from "near-sdk-js";
+                storage: `import { NearBindgen, view, call } from "near-sdk-js";
 
 @NearBindgen({})
 class StorageContract {
@@ -333,7 +405,7 @@ class StorageContract {
   }
 }`,
 
-            hello_world: `import { NearBindgen, view } from "near-sdk-js";
+                hello_world: `import { NearBindgen, view } from "near-sdk-js";
 
 @NearBindgen({})
 class HelloWorldContract {
@@ -342,18 +414,180 @@ class HelloWorldContract {
     return "Hello, NEAR!";
   }
 }`
+            },
+
+            Rust: {
+                counter: `use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::{log, near_bindgen};
+
+#[near_bindgen]
+#[derive(BorshDeserialize, BorshSerialize, Default)]
+pub struct CounterContract {
+    count: i32,
+}
+
+#[near_bindgen]
+impl CounterContract {
+    pub fn get_count(&self) -> i32 {
+        self.count
+    }
+
+    pub fn increment(&mut self) {
+        self.count += 1;
+        log!("Count is now: {}", self.count);
+    }
+
+    pub fn decrement(&mut self) {
+        self.count -= 1;
+        log!("Count is now: {}", self.count);
+    }
+
+    pub fn reset(&mut self) {
+        self.count = 0;
+        log!("Count reset to 0");
+    }
+}`,
+
+                greeting: `use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::{log, near_bindgen};
+
+#[near_bindgen]
+#[derive(BorshDeserialize, BorshSerialize)]
+pub struct GreetingContract {
+    greeting: String,
+}
+
+impl Default for GreetingContract {
+    fn default() -> Self {
+        Self {
+            greeting: "Hello".to_string(),
+        }
+    }
+}
+
+#[near_bindgen]
+impl GreetingContract {
+    pub fn get_greeting(&self) -> String {
+        self.greeting.clone()
+    }
+
+    pub fn set_greeting(&mut self, message: String) {
+        self.greeting = message.clone();
+        log!("Greeting set to: {}", message);
+    }
+}`,
+
+                storage: `use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::collections::UnorderedMap;
+use near_sdk::{log, near_bindgen, env};
+
+#[near_bindgen]
+#[derive(BorshDeserialize, BorshSerialize)]
+pub struct StorageContract {
+    data: UnorderedMap<String, String>,
+}
+
+impl Default for StorageContract {
+    fn default() -> Self {
+        Self {
+            data: UnorderedMap::new(b"d"),
+        }
+    }
+}
+
+#[near_bindgen]
+impl StorageContract {
+    pub fn get(&self, key: String) -> Option<String> {
+        self.data.get(&key)
+    }
+
+    pub fn set(&mut self, key: String, value: String) {
+        self.data.insert(&key, &value);
+        log!("Set {} = {}", key, value);
+    }
+
+    pub fn remove(&mut self, key: String) {
+        self.data.remove(&key);
+        log!("Removed {}", key);
+    }
+
+    pub fn list(&self) -> Vec<String> {
+        self.data.keys().collect()
+    }
+}`,
+
+                hello_world: `use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::near_bindgen;
+
+#[near_bindgen]
+#[derive(BorshDeserialize, BorshSerialize, Default)]
+pub struct HelloWorldContract {}
+
+#[near_bindgen]
+impl HelloWorldContract {
+    pub fn hello_world(&self) -> String {
+        "Hello, NEAR!".to_string()
+    }
+}`
+            }
         };
 
+        function selectLanguage(language) {
+            currentLanguage = language;
+            
+            // Update active tab
+            document.querySelectorAll('.language-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Update label
+            document.getElementById('currentLanguage').textContent = language;
+            
+            // Clear editor and result
+            clearEditor();
+            
+            // Update example buttons
+            updateExampleButtons();
+            
+            // Load first example for the language
+            const exampleNames = Object.keys(examples[language]);
+            if (exampleNames.length > 0) {
+                loadExample(exampleNames[0]);
+            }
+        }
+
+        function updateExampleButtons() {
+            const exampleButtons = document.getElementById('exampleButtons');
+            const languageExamples = examples[currentLanguage];
+            
+            exampleButtons.innerHTML = '';
+            
+            for (const [name, code] of Object.entries(languageExamples)) {
+                const btn = document.createElement('button');
+                btn.className = 'example-btn';
+                btn.textContent = name.split('_').map(word => 
+                    word.charAt(0).toUpperCase() + word.slice(1)
+                ).join(' ') + ' Contract';
+                btn.onclick = () => loadExample(name);
+                exampleButtons.appendChild(btn);
+            }
+        }
+
         function loadExample(name) {
-            const code = examples[name];
+            const code = examples[currentLanguage][name];
             if (code) {
                 document.getElementById('contractCode').value = code;
+                compiledWasm = null;
+                document.getElementById('deployBtn').disabled = true;
                 hideResult();
             }
         }
 
         function clearEditor() {
             document.getElementById('contractCode').value = '';
+            compiledWasm = null;
+            document.getElementById('deployBtn').disabled = true;
             hideResult();
         }
 
@@ -410,7 +644,7 @@ class HelloWorldContract {
                     },
                     body: JSON.stringify({
                         code: code,
-                        language: 'JavaScript'
+                        language: currentLanguage
                     })
                 });
 
@@ -419,19 +653,103 @@ class HelloWorldContract {
                 hideLoading();
 
                 if (response.ok && data.success) {
+                    let compilationTime = data.compilation_time;
+                    if (typeof compilationTime === 'number') {
+                        compilationTime = `${compilationTime.toFixed(2)}s`;
+                    }
+                    
+                    // Store compiled WASM for deployment
+                    compiledWasm = data.wasm;
+                    document.getElementById('deployBtn').disabled = false;
+                    
                     showResult(true, 'Contract compiled successfully!', {
                         size: data.size,
-                        compilation_time: data.compilation_time
+                        compilation_time: compilationTime
                     });
                 } else {
+                    const errorMessage = data.stderr || data.message || data.error || 'Unknown error';
+                    compiledWasm = null;
+                    document.getElementById('deployBtn').disabled = true;
                     showResult(false, 'Compilation failed', {
-                        error: data.message || data.error || 'Unknown error'
+                        error: errorMessage
                     });
                 }
             } catch (error) {
                 hideLoading();
+                compiledWasm = null;
+                document.getElementById('deployBtn').disabled = true;
                 showResult(false, 'Failed to connect to backend', {
-                    error: error.message || 'Make sure the backend server is running on https://learn-near-backend.fly.dev'
+                    error: error.message || 'Make sure the backend server is running on http://localhost:3001'
+                });
+            }
+        }
+
+        async function deployContract() {
+            if (!compiledWasm) {
+                showResult(false, 'No compiled contract to deploy. Please compile first.');
+                return;
+            }
+
+            const contractAccountId = prompt('Enter contract account ID (leave empty to use your account):');
+            if (contractAccountId === null) {
+                return; // User cancelled
+            }
+
+            showLoading();
+            document.getElementById('loading').querySelector('p').textContent = 'Deploying contract... Please wait.';
+            document.getElementById('deployBtn').disabled = true;
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/deploy`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        wasmBase64: compiledWasm,
+                        contractAccountId: contractAccountId || undefined,
+                        initMethod: 'new',
+                        initArgs: {}
+                    })
+                });
+
+                const data = await response.json();
+
+                hideLoading();
+                document.getElementById('loading').querySelector('p').textContent = 'Compiling contract... Please wait.';
+
+                if (response.ok && data.success) {
+                    let html = `<h3>✅ Deployment Successful!</h3>`;
+                    html += `<p><strong>Contract deployed to: ${data.contractId}</strong></p>`;
+                    if (data.transactionHash) {
+                        html += `<p>Transaction: ${data.transactionHash}</p>`;
+                    }
+                    if (data.explorerUrl) {
+                        html += `<p><a href="${data.explorerUrl}" target="_blank" style="color: #667eea;">View in Explorer</a></p>`;
+                    }
+                    if (data.accountUrl) {
+                        html += `<p><a href="${data.accountUrl}" target="_blank" style="color: #667eea;">View Account</a></p>`;
+                    }
+                    html += `<p>Deployment Time: ${data.deploymentTime?.toFixed(2)}s</p>`;
+                    
+                    const resultBox = document.getElementById('resultBox');
+                    resultBox.className = 'result-box success show';
+                    resultBox.innerHTML = html;
+                } else {
+                    showResult(false, 'Deployment failed', {
+                        error: data.error || 'Unknown error'
+                    });
+                }
+
+                // Re-enable deploy button
+                document.getElementById('deployBtn').disabled = false;
+
+            } catch (error) {
+                hideLoading();
+                document.getElementById('loading').querySelector('p').textContent = 'Compiling contract... Please wait.';
+                document.getElementById('deployBtn').disabled = false;
+                showResult(false, 'Failed to connect to backend', {
+                    error: error.message || 'Make sure the backend server is running on http://localhost:3001'
                 });
             }
         }
@@ -443,8 +761,9 @@ class HelloWorldContract {
             }
         });
 
-        // Load counter example by default
+        // Initialize on page load
         window.addEventListener('DOMContentLoaded', () => {
+            updateExampleButtons();
             loadExample('counter');
         });
     </script>
