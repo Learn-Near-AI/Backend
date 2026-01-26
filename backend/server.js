@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { buildContract } from './build-contract.js'
 import { buildRustContract } from './build-rust-contract.js'
-import { deployContract, callContract, viewContract, areCredentialsConfigured } from './deploy-contract.js'
+import { deployContract, deployToSubaccount, callContract, viewContract, areCredentialsConfigured } from './deploy-contract.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -117,18 +117,29 @@ app.post('/api/deploy', async (req, res) => {
       })
     }
 
-    const { wasmBase64, contractAccountId, initMethod, initArgs } = req.body
+    const { wasmBase64, contractAccountId, initMethod, initArgs, useSubaccount, userId, projectId } = req.body
 
     if (!wasmBase64) {
       return res.status(400).json({ error: 'Missing wasmBase64' })
     }
 
-    console.log('Deploying contract via NEAR CLI...')
-
     // Convert base64 to buffer
     const wasmBuffer = Buffer.from(wasmBase64, 'base64')
 
-    // Deploy contract
+    // Deploy to subaccount if requested
+    if (useSubaccount) {
+      console.log('Deploying contract to subaccount...')
+      const result = await deployToSubaccount(wasmBuffer, {
+        userId: userId || 'user',
+        projectId: projectId || 'project',
+        initMethod: initMethod || 'new',
+        initArgs: initArgs || {}
+      })
+      return res.json(result)
+    }
+
+    // Standard deployment
+    console.log('Deploying contract via NEAR CLI...')
     const result = await deployContract(wasmBuffer, {
       contractAccountId,
       initMethod: initMethod || 'new',
