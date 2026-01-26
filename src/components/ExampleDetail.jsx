@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { exampleCode } from '../data/examples'
 import { testFunctions, hasTestFunctions } from '../data/testFunctions'
-import { initWalletSelector, getActiveAccountId, getNearConfig } from '../near/near'
-import { Buffer } from 'buffer'
 import ExampleHeader from './ExampleHeader'
 import CodeEditor from './CodeEditor'
 import InfoPanel from './InfoPanel'
@@ -193,12 +191,6 @@ function ExampleDetail({ example, onBack }) {
       return
     }
 
-    const accountId = await getActiveAccountId()
-    if (!accountId) {
-      addConsoleOutput('❌ Error: Please connect your wallet first')
-      return
-    }
-
     setIsDeploying(true)
     clearConsole()
     addConsoleOutput('▶ Starting deployment process...')
@@ -225,125 +217,46 @@ function ExampleDetail({ example, onBack }) {
       addConsoleOutput('✓ Contract compiled successfully')
       addConsoleOutput(`✓ WASM size: ${(compileResult.size / 1024).toFixed(2)} KB`)
 
-      const selector = await initWalletSelector()
-      const wallet = await selector.wallet()
-      const accountIdCheck = await getActiveAccountId()
+      addConsoleOutput('▶ Deploying contract via backend...')
 
-      if (!accountIdCheck) {
-        throw new Error('Please connect your wallet first')
+      // Deploy using backend endpoint
+      const deployResponse = await fetch(`${API_BASE_URL}/api/deploy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wasmBase64: compileResult.wasm,
+          useSubaccount: true,
+          userId: 'user',
+          projectId: example.id,
+          initMethod: 'new',
+          initArgs: {}
+        }),
+      })
+
+      if (!deployResponse.ok) {
+        const errorData = await deployResponse.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errorData.error || errorData.message || `HTTP ${deployResponse.status}: ${deployResponse.statusText}`)
       }
 
-      const timestamp = Date.now()
-      const subaccountName = `${example.id}-${timestamp}`
-      const contractId = `${subaccountName}.${accountIdCheck.split('.')[1] || 'testnet'}`
+      const deployResult = await deployResponse.json()
 
-      addConsoleOutput(`▶ Deploying to: ${contractId}`)
-      addConsoleOutput('▶ Preparing deployment transaction...')
+      if (!deployResult.success) {
+        throw new Error(deployResult.error || 'Deployment failed')
+      }
 
-      const wasmBuffer = Buffer.from(compileResult.wasm, 'base64')
-      const wasmUint8Array = Array.from(new Uint8Array(wasmBuffer))
-
-      const { nodeUrl } = getNearConfig()
+      addConsoleOutput('✓ Contract deployed successfully!')
       
-      let accountExists = false
-      try {
-        const checkRes = await fetch(nodeUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 'dontcare',
-            method: 'query',
-            params: {
-              request_type: 'view_account',
-              finality: 'final',
-              account_id: contractId,
-            },
-          }),
-        })
-        const checkJson = await checkRes.json()
-        accountExists = !checkJson.error && checkJson.result
-      } catch (e) {
-        accountExists = false
+      const txHash = deployResult.transactionHash || 'pending'
+      const contractId = deployResult.contractAccountId || deployResult.accountId || 'unknown'
+
+      addConsoleOutput(`✓ Transaction hash: ${txHash}`)
+      addConsoleOutput(`✓ Contract available at: ${contractId}`)
+      if (deployResult.deploymentTime) {
+        addConsoleOutput(`✓ Deployment time: ${deployResult.deploymentTime.toFixed(2)}s`)
       }
 
-      if (!accountExists) {
-        addConsoleOutput(`ℹ️  Account ${contractId} will be created during deployment`)
-        addConsoleOutput('   (Subaccount creation requires parent account balance)')
-      }
-
-      addConsoleOutput('▶ Uploading WASM contract...')
-      addConsoleOutput('▶ Waiting for wallet approval...')
-
-      const targetAccountId = accountExists ? contractId : accountIdCheck
-      
-      // Store target account ID for retrieval after redirect
-      localStorage.setItem('pendingDeploymentAccountId', targetAccountId)
-      
-      if (!accountExists) {
-        addConsoleOutput(`ℹ️  Deploying to your account: ${targetAccountId}`)
-        addConsoleOutput('   (To deploy to subaccount, create it first)')
-      }
-
-      const deployAction = {
-        type: 'DeployContract',
-        params: {
-          code: wasmUint8Array,
-        },
-      }
-
-      // Set a timeout to reset deploying state if wallet doesn't respond
-      // This handles cases where the wallet redirects but the state wasn't reset
-      const deployTimeout = setTimeout(() => {
-        console.warn('Deploy timeout: Resetting deploying state (wallet may have redirected)')
-        setIsDeploying(false)
-      }, 30000) // 30 second timeout
-
-      try {
-        const deployResult = await wallet.signAndSendTransaction({
-          signerId: accountIdCheck,
-          receiverId: targetAccountId,
-          actions: [deployAction],
-        })
-        
-        clearTimeout(deployTimeout)
-
-        addConsoleOutput('✓ Contract deployed successfully!')
-        
-        const txHash = deployResult?.transaction?.hash || 
-                      deployResult?.transactionHash ||
-                      deployResult?.receipts_outcome?.[0]?.id ||
-                      'pending'
-
-        addConsoleOutput(`✓ Transaction hash: ${txHash}`)
-        addConsoleOutput(`✓ Contract available at: ${targetAccountId}`)
-
-        setDeployedContractId(targetAccountId)
-        setDeploymentTxHash(txHash)
-        
-        // Note: Modal will be shown after redirect via URL parameter handler
-        // The wallet redirects to external site, so we can't show modal here
-        // Reset deploying state since transaction was sent (wallet will redirect)
-        setIsDeploying(false)
-      } catch (walletError) {
-        clearTimeout(deployTimeout)
-        // If wallet redirects, the error might be that we're being redirected
-        // In that case, reset the state and let the redirect handler take over
-        if (walletError.message && (
-          walletError.message.includes('redirect') || 
-          walletError.message.includes('User rejected') ||
-          walletError.message.includes('cancelled')
-        )) {
-          setIsDeploying(false)
-          if (walletError.message.includes('User rejected') || walletError.message.includes('cancelled')) {
-            addConsoleOutput('ℹ️  Deployment cancelled by user')
-          } else {
-            addConsoleOutput('ℹ️  Redirecting to wallet...')
-          }
-          throw walletError
-        }
-        throw walletError
-      }
+      setDeployedContractId(contractId)
+      setDeploymentTxHash(txHash)
     } catch (error) {
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
         addConsoleOutput(`❌ Error: Failed to connect to backend`)

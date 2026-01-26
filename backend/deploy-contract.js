@@ -343,13 +343,14 @@ export async function deployToSubaccount(wasmBuffer, options = {}) {
     subaccountKeyPair = KeyPair.fromRandom('ed25519')
     const subaccountPublicKey = subaccountKeyPair.getPublicKey()
     
-    // Connect to NEAR
+    // Connect to NEAR using RPC endpoint
+    // Using fastnear.com for testnet (reliable alternative to deprecated rpc.testnet.near.org)
     const near = await connect({
       networkId: network,
       keyStore,
       nodeUrl: network === 'mainnet' 
         ? 'https://rpc.mainnet.near.org' 
-        : 'https://rpc.testnet.near.org'
+        : 'https://rpc.testnet.fastnear.com'
     })
     
     const parentAccount = await near.account(parentAccountId)
