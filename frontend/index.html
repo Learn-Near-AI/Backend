@@ -173,6 +173,19 @@
             margin: 5px 0;
             font-family: 'Courier New', monospace;
             font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .result-box .stats {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .result-box .stats p {
+            margin: 8px 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 0.95rem;
         }
 
         .loading {
@@ -322,9 +335,11 @@
     </div>
 
     <script>
-        const BACKEND_URL = 'http://localhost:3001';
+        const BACKEND_URL = 'http://localhost:8080';
         let currentLanguage = 'JavaScript';
         let compiledWasm = null;
+        let currentUserId = 'user_' + Math.random().toString(36).substr(2, 9);
+        let currentProjectId = 'project_' + Math.random().toString(36).substr(2, 9);
 
         const examples = {
             JavaScript: {
@@ -417,16 +432,15 @@ class HelloWorldContract {
             },
 
             Rust: {
-                counter: `use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::{log, near_bindgen};
+                counter: `use near_sdk::{env, near, AccountId, PanicOnDefault};
 
-#[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Default)]
+#[near(contract_state)]
+#[derive(PanicOnDefault)]
 pub struct CounterContract {
     count: i32,
 }
 
-#[near_bindgen]
+#[near]
 impl CounterContract {
     pub fn get_count(&self) -> i32 {
         self.count
@@ -434,81 +448,77 @@ impl CounterContract {
 
     pub fn increment(&mut self) {
         self.count += 1;
-        log!("Count is now: {}", self.count);
+        env::log_str(&format!("Count is now: {}", self.count));
     }
 
     pub fn decrement(&mut self) {
         self.count -= 1;
-        log!("Count is now: {}", self.count);
+        env::log_str(&format!("Count is now: {}", self.count));
     }
 
     pub fn reset(&mut self) {
         self.count = 0;
-        log!("Count reset to 0");
+        env::log_str("Count reset to 0");
     }
 }`,
 
-                greeting: `use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::{log, near_bindgen};
+                greeting: `use near_sdk::{env, near, AccountId, PanicOnDefault};
 
-#[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize)]
+#[near(contract_state)]
+#[derive(PanicOnDefault)]
 pub struct GreetingContract {
     greeting: String,
 }
 
-impl Default for GreetingContract {
-    fn default() -> Self {
+#[near]
+impl GreetingContract {
+    #[init]
+    pub fn new() -> Self {
         Self {
             greeting: "Hello".to_string(),
         }
     }
-}
 
-#[near_bindgen]
-impl GreetingContract {
     pub fn get_greeting(&self) -> String {
         self.greeting.clone()
     }
 
     pub fn set_greeting(&mut self, message: String) {
-        self.greeting = message.clone();
-        log!("Greeting set to: {}", message);
+        env::log_str(&format!("Greeting set to: {}", message));
+        self.greeting = message;
     }
 }`,
 
-                storage: `use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::UnorderedMap;
-use near_sdk::{log, near_bindgen, env};
+                storage: `use near_sdk::collections::UnorderedMap;
+use near_sdk::{env, near, AccountId, PanicOnDefault};
 
-#[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize)]
+#[near(contract_state)]
+#[derive(PanicOnDefault)]
 pub struct StorageContract {
     data: UnorderedMap<String, String>,
 }
 
-impl Default for StorageContract {
-    fn default() -> Self {
+#[near]
+impl StorageContract {
+    #[init]
+    pub fn new() -> Self {
         Self {
             data: UnorderedMap::new(b"d"),
         }
     }
-}
 
-#[near_bindgen]
-impl StorageContract {
     pub fn get(&self, key: String) -> Option<String> {
         self.data.get(&key)
     }
 
     pub fn set(&mut self, key: String, value: String) {
         self.data.insert(&key, &value);
-        log!("Set {} = {}", key, value);
+        env::log_str(&format!("Set {} = {}", key, value));
     }
 
     pub fn remove(&mut self, key: String) {
         self.data.remove(&key);
-        log!("Removed {}", key);
+        env::log_str(&format!("Removed {}", key));
     }
 
     pub fn list(&self) -> Vec<String> {
@@ -516,14 +526,13 @@ impl StorageContract {
     }
 }`,
 
-                hello_world: `use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::near_bindgen;
+                hello_world: `use near_sdk::{near, PanicOnDefault};
 
-#[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Default)]
+#[near(contract_state)]
+#[derive(PanicOnDefault)]
 pub struct HelloWorldContract {}
 
-#[near_bindgen]
+#[near]
 impl HelloWorldContract {
     pub fn hello_world(&self) -> String {
         "Hello, NEAR!".to_string()
@@ -610,9 +619,27 @@ impl HelloWorldContract {
             let html = `<h3>${success ? '✅ Success!' : '❌ Error'}</h3>`;
             html += `<p><strong>${message}</strong></p>`;
 
-            if (success && details.size) {
-                html += `<p>WASM Size: ${details.size.toLocaleString()} bytes</p>`;
-                html += `<p>Compilation Time: ${details.compilation_time || 'N/A'}</p>`;
+            if (success) {
+                // Display compilation stats
+                const hasStats = (details.size !== undefined && details.size !== null) || 
+                                (details.compilation_time && details.compilation_time !== 'N/A') ||
+                                (details.abi_functions !== undefined);
+                
+                if (hasStats) {
+                    html += `<div class="stats">`;
+                    if (details.size !== undefined && details.size !== null) {
+                        const wasmSizeKB = (details.size / 1024).toFixed(2);
+                        html += `<p><strong>WASM Size:</strong> ${details.size.toLocaleString()} bytes (${wasmSizeKB} KB)</p>`;
+                    }
+                    if (details.compilation_time && details.compilation_time !== 'N/A') {
+                        html += `<p><strong>Compilation Time:</strong> ${details.compilation_time}</p>`;
+                    }
+                    // Display ABI functions count if available
+                    if (details.abi_functions !== undefined) {
+                        html += `<p><strong>ABI Functions:</strong> ${details.abi_functions}</p>`;
+                    }
+                    html += `</div>`;
+                }
             }
 
             if (!success && details.error) {
@@ -634,17 +661,24 @@ impl HelloWorldContract {
                 return;
             }
 
+            // Warn if trying to compile JavaScript (backend only supports Rust)
+            if (currentLanguage === 'JavaScript') {
+                showResult(false, 'JavaScript contracts are not supported. Please select Rust and use Rust contract syntax.');
+                return;
+            }
+
             showLoading();
 
             try {
-                const response = await fetch(`${BACKEND_URL}/api/compile`, {
+                const response = await fetch(`${BACKEND_URL}/compile`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        code: code,
-                        language: currentLanguage
+                        user_id: currentUserId,
+                        project_id: currentProjectId,
+                        code: code
                     })
                 });
 
@@ -652,22 +686,42 @@ impl HelloWorldContract {
 
                 hideLoading();
 
-                if (response.ok && data.success) {
-                    let compilationTime = data.compilation_time;
-                    if (typeof compilationTime === 'number') {
-                        compilationTime = `${compilationTime.toFixed(2)}s`;
+                if (response.ok && data.success && data.data) {
+                    const compileData = data.data;
+                    
+                    // Check if compilation was actually successful
+                    if (compileData.success) {
+                        let compilationTime = compileData.details?.compilation_time;
+                        if (typeof compilationTime === 'number') {
+                            compilationTime = `${compilationTime.toFixed(2)}s`;
+                        }
+                        
+                        // Count ABI functions if available
+                        let abiFunctions = 0;
+                        if (compileData.abi && compileData.abi.body && compileData.abi.body.functions) {
+                            abiFunctions = compileData.abi.body.functions.length;
+                        }
+                        
+                        // Store project info for deployment (backend handles WASM internally)
+                        compiledWasm = true; // Mark as compiled
+                        document.getElementById('deployBtn').disabled = false;
+                        
+                        showResult(true, 'Contract compiled successfully!', {
+                            size: compileData.details?.wasm_size || 0,
+                            compilation_time: compilationTime || 'N/A',
+                            abi_functions: abiFunctions
+                        });
+                    } else {
+                        // Compilation failed even though API call succeeded
+                        const errorMessage = compileData.stderr || compileData.stdout || 'Compilation failed';
+                        compiledWasm = null;
+                        document.getElementById('deployBtn').disabled = true;
+                        showResult(false, 'Compilation failed', {
+                            error: errorMessage
+                        });
                     }
-                    
-                    // Store compiled WASM for deployment
-                    compiledWasm = data.wasm;
-                    document.getElementById('deployBtn').disabled = false;
-                    
-                    showResult(true, 'Contract compiled successfully!', {
-                        size: data.size,
-                        compilation_time: compilationTime
-                    });
                 } else {
-                    const errorMessage = data.stderr || data.message || data.error || 'Unknown error';
+                    const errorMessage = data.data?.stderr || data.error?.details || data.error?.message || data.message || 'Unknown error';
                     compiledWasm = null;
                     document.getElementById('deployBtn').disabled = true;
                     showResult(false, 'Compilation failed', {
@@ -679,7 +733,7 @@ impl HelloWorldContract {
                 compiledWasm = null;
                 document.getElementById('deployBtn').disabled = true;
                 showResult(false, 'Failed to connect to backend', {
-                    error: error.message || 'Make sure the backend server is running on http://localhost:3001'
+                    error: error.message || 'Make sure the backend server is running on http://localhost:8080'
                 });
             }
         }
@@ -690,7 +744,7 @@ impl HelloWorldContract {
                 return;
             }
 
-            const contractAccountId = prompt('Enter contract account ID (leave empty to use your account):');
+            const contractAccountId = prompt('Enter contract account ID (leave empty for auto-generated subaccount):');
             if (contractAccountId === null) {
                 return; // User cancelled
             }
@@ -700,16 +754,15 @@ impl HelloWorldContract {
             document.getElementById('deployBtn').disabled = true;
 
             try {
-                const response = await fetch(`${BACKEND_URL}/api/deploy`, {
+                const response = await fetch(`${BACKEND_URL}/deploy`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        wasmBase64: compiledWasm,
-                        contractAccountId: contractAccountId || undefined,
-                        initMethod: 'new',
-                        initArgs: {}
+                        user_id: currentUserId,
+                        project_id: currentProjectId,
+                        account_id: contractAccountId || null
                     })
                 });
 
@@ -718,26 +771,31 @@ impl HelloWorldContract {
                 hideLoading();
                 document.getElementById('loading').querySelector('p').textContent = 'Compiling contract... Please wait.';
 
-                if (response.ok && data.success) {
+                if (response.ok && data.success && data.data) {
+                    const deployData = data.data;
                     let html = `<h3>✅ Deployment Successful!</h3>`;
-                    html += `<p><strong>Contract deployed to: ${data.contractId}</strong></p>`;
-                    if (data.transactionHash) {
-                        html += `<p>Transaction: ${data.transactionHash}</p>`;
+                    html += `<p><strong>Contract deployed to: ${deployData.contract_id}</strong></p>`;
+                    if (deployData.transaction_hash) {
+                        html += `<p>Transaction: ${deployData.transaction_hash}</p>`;
                     }
-                    if (data.explorerUrl) {
-                        html += `<p><a href="${data.explorerUrl}" target="_blank" style="color: #667eea;">View in Explorer</a></p>`;
+                    if (deployData.explorer_url) {
+                        html += `<p><a href="${deployData.explorer_url}" target="_blank" style="color: #667eea;">View in Explorer</a></p>`;
                     }
-                    if (data.accountUrl) {
-                        html += `<p><a href="${data.accountUrl}" target="_blank" style="color: #667eea;">View Account</a></p>`;
+                    if (deployData.gas_used) {
+                        html += `<p>Gas Used: ${deployData.gas_used}</p>`;
                     }
-                    html += `<p>Deployment Time: ${data.deploymentTime?.toFixed(2)}s</p>`;
+                    if (deployData.details) {
+                        html += `<p>Network: ${deployData.details.network}</p>`;
+                        html += `<p>Deployed by: ${deployData.details.deployer_account}</p>`;
+                    }
                     
                     const resultBox = document.getElementById('resultBox');
                     resultBox.className = 'result-box success show';
                     resultBox.innerHTML = html;
                 } else {
+                    const errorMessage = data.error?.details || data.error?.message || data.message || 'Unknown error';
                     showResult(false, 'Deployment failed', {
-                        error: data.error || 'Unknown error'
+                        error: errorMessage
                     });
                 }
 
@@ -749,7 +807,7 @@ impl HelloWorldContract {
                 document.getElementById('loading').querySelector('p').textContent = 'Compiling contract... Please wait.';
                 document.getElementById('deployBtn').disabled = false;
                 showResult(false, 'Failed to connect to backend', {
-                    error: error.message || 'Make sure the backend server is running on http://localhost:3001'
+                    error: error.message || 'Make sure the backend server is running on http://localhost:8080'
                 });
             }
         }

@@ -1,0 +1,5 @@
+{
+  "user_id": "testuser123",
+  "project_id": "counter_contract_demo",
+  "code": "use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};\nuse near_sdk::{env, near_bindgen};\n\n#[near_bindgen]\n#[derive(Default, BorshDeserialize, BorshSerialize)]\npub struct Counter {\n    value: i32,\n}\n\n#[near_bindgen]\nimpl Counter {\n    pub fn increment(&mut self) {\n        self.value += 1;\n        env::log_str(&format!(\"Counter incremented to: {}\", self.value));\n    }\n\n    pub fn decrement(&mut self) {\n        self.value -= 1;\n        env::log_str(&format!(\"Counter decremented to: {}\", self.value));\n    }\n\n    pub fn get_count(&self) -> i32 {\n        self.value\n    }\n\n    pub fn reset(&mut self) {\n        self.value = 0;\n        env::log_str(\"Counter reset to 0\");\n    }\n}"
+}
