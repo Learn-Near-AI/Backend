@@ -263,23 +263,35 @@ export async function buildRustContract(sourceCode, projectId = null) {
     const libRsPath = join(projectDir, 'src', 'lib.rs')
     await writeFile(libRsPath, convertedCode, 'utf-8')
     
-    // Run cargo build with wasm32 target using local target directory (no shared cache)
+    // Use cargo-near build for NEAR-specific compilation (generates WASM + ABI)
+    // cargo-near builds in release mode by default (uses Cargo's release profile)
+    // Using non-reproducible-wasm flag to skip interactive prompt (recommended for local development)
     console.log(`Compiling Rust contract in: ${projectDir}`)
+    console.log('⏳ This may take 5-15 minutes on first build (downloading dependencies)...')
     
-    const compileResult = await execAsync('cargo build --target wasm32-unknown-unknown --release', {
+    const compileResult = await execAsync('cargo near build non-reproducible-wasm', {
       cwd: projectDir,
       maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large outputs
+      timeout: 900000, // 15 minute timeout to prevent indefinite hangs
       env: {
         ...process.env,
         // No CARGO_TARGET_DIR - use local target directory for each build
-        RUSTFLAGS: '-C link-arg=-s' // Strip symbols to reduce size
       }
     })
     
+    // Log compilation output for debugging
+    if (compileResult.stdout) {
+      console.log('Build output:', compileResult.stdout)
+    }
+    if (compileResult.stderr) {
+      console.log('Build warnings:', compileResult.stderr)
+    }
+    
     const compilationTime = (Date.now() - startTime) / 1000
     
-    // Extract WASM file from local target directory
-    const wasmPath = join(projectDir, 'target', 'wasm32-unknown-unknown', 'release', 'contract.wasm')
+    // Extract WASM file from cargo-near output directory
+    // cargo-near outputs to target/near/ directory
+    const wasmPath = join(projectDir, 'target', 'near', 'contract.wasm')
     
     let wasmBuffer = null
     let wasmSize = 0
@@ -287,6 +299,18 @@ export async function buildRustContract(sourceCode, projectId = null) {
     let originalSize = 0
     
     try {
+      // Try to load ABI from cargo-near output
+      const abiPath = join(projectDir, 'target', 'near', 'contract.json')
+      if (existsSync(abiPath)) {
+        try {
+          const abiContent = await readFile(abiPath, 'utf-8')
+          abi = JSON.parse(abiContent)
+          console.log(`✓ ABI file generated`)
+        } catch (abiError) {
+          console.warn('Could not parse ABI file:', abiError.message)
+        }
+      }
+      
       if (existsSync(wasmPath)) {
         wasmBuffer = await readFile(wasmPath)
         originalSize = wasmBuffer.length
@@ -322,20 +346,20 @@ export async function buildRustContract(sourceCode, projectId = null) {
         }
       } else {
         console.warn(`WASM file not found at: ${wasmPath}`)
-        // Try to find any .wasm file in the release directory
-        const releaseDir = join(projectDir, 'target', 'wasm32-unknown-unknown', 'release')
+        // Fallback: Try to find any .wasm file in the cargo-near output directory
+        const nearDir = join(projectDir, 'target', 'near')
         try {
-          if (existsSync(releaseDir)) {
-            const files = await readdir(releaseDir)
+          if (existsSync(nearDir)) {
+            const files = await readdir(nearDir)
             const wasmFile = files.find(f => f.endsWith('.wasm'))
             if (wasmFile) {
-              wasmBuffer = await readFile(join(releaseDir, wasmFile))
+              wasmBuffer = await readFile(join(nearDir, wasmFile))
               wasmSize = wasmBuffer.length
               console.log(`✓ Found WASM file: ${wasmFile} (${wasmSize} bytes)`)
             }
           }
         } catch (dirError) {
-          console.warn('Could not read release directory:', dirError.message)
+          console.warn('Could not read cargo-near output directory:', dirError.message)
         }
       }
     } catch (error) {

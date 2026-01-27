@@ -11,20 +11,13 @@ const { parseNearAmount } = utils.format
 const execAsync = promisify(exec)
 
 /**
- * Setup NEAR credentials from environment variables
- * Expected env vars:
- * - NEAR_ACCOUNT_ID: The deployer account ID
- * - NEAR_PRIVATE_KEY: The private key for the account
- * - NEAR_NETWORK: testnet or mainnet (default: testnet)
+ * Setup NEAR credentials (hardcoded for development)
  */
 async function setupNearCredentials() {
-  const accountId = process.env.NEAR_ACCOUNT_ID
-  const privateKey = process.env.NEAR_PRIVATE_KEY
-  const network = process.env.NEAR_NETWORK || 'testnet'
-  
-  if (!accountId || !privateKey) {
-    throw new Error('NEAR_ACCOUNT_ID and NEAR_PRIVATE_KEY environment variables must be set')
-  }
+  // Hardcoded credentials for development
+  const accountId = 'softquiche5250.testnet'
+  const privateKey = 'ed25519:4YUnd6qTdKcVgB5V1ZApjVKzMm2gwXtFTfAnABjFbm6vXGhQvpbNovaLqQTsE7wGTBtArYTazaRwqn9sd4txcAgr'
+  const network = 'testnet'
   
   // Create credentials directory
   const credentialsDir = join(homedir(), '.near-credentials', network)
@@ -45,7 +38,30 @@ async function setupNearCredentials() {
 }
 
 /**
- * Deploy a contract using NEAR CLI
+ * Setup NEAR connection using near-api-js (for programmatic access)
+ * This is consistent with deployToSubaccount and better for automation
+ */
+async function setupNearConnection() {
+  const { accountId, network } = await setupNearCredentials()
+  const privateKey = 'ed25519:4YUnd6qTdKcVgB5V1ZApjVKzMm2gwXtFTfAnABjFbm6vXGhQvpbNovaLqQTsE7wGTBtArYTazaRwqn9sd4txcAgr'
+  
+  const keyStore = new keyStores.InMemoryKeyStore()
+  const keyPair = KeyPair.fromString(privateKey)
+  await keyStore.setKey(network, accountId, keyPair)
+  
+  const near = await connect({
+    networkId: network,
+    keyStore,
+    nodeUrl: network === 'mainnet' 
+      ? 'https://rpc.mainnet.near.org' 
+      : 'https://rpc.testnet.fastnear.com'
+  })
+  
+  return { near, accountId, network }
+}
+
+/**
+ * Deploy a contract using near-api-js (programmatic, consistent with deployToSubaccount)
  * 
  * @param {Buffer} wasmBuffer - The compiled WASM file as a buffer
  * @param {Object} options - Deployment options
@@ -56,84 +72,40 @@ async function setupNearCredentials() {
  */
 export async function deployContract(wasmBuffer, options = {}) {
   const startTime = Date.now()
-  let tempWasmPath = null
   
   try {
-    // Setup credentials
-    const { accountId, network } = await setupNearCredentials()
-    
-    // Determine contract account
+    const { near, accountId, network } = await setupNearConnection()
     const contractAccountId = options.contractAccountId || accountId
-    
-    // Write WASM to temporary file
-    tempWasmPath = join(process.cwd(), 'temp-builds', `deploy-${Date.now()}.wasm`)
-    await mkdir(join(process.cwd(), 'temp-builds'), { recursive: true })
-    await writeFile(tempWasmPath, wasmBuffer)
     
     console.log(`Deploying contract to ${contractAccountId} on ${network}...`)
     console.log(`WASM size: ${wasmBuffer.length} bytes`)
     
-    // Deploy using NEAR CLI (use npx for cross-platform compatibility)
-    // NEAR CLI 4.x syntax: near deploy <account-id> <wasm-file> --networkId <network>
-    // Use --force to skip confirmation prompts
-    const deployCommand = `npx near deploy ${contractAccountId} "${tempWasmPath}" --networkId ${network} --force`
-    
-    let deployResult
-    try {
-      deployResult = await execAsync(deployCommand, {
-        maxBuffer: 10 * 1024 * 1024,
-        timeout: 120000, // 2 minute timeout
-        env: {
-          ...process.env,
-          NEAR_ENV: network
-        }
-      })
-      console.log('Deploy stdout:', deployResult.stdout)
-      if (deployResult.stderr) {
-        console.log('Deploy stderr:', deployResult.stderr)
-      }
-    } catch (error) {
-      throw new Error(`Deployment failed: ${error.message}\nStdout: ${error.stdout}\nStderr: ${error.stderr}`)
-    }
-    
-    // Extract transaction hash from output
-    // NEAR CLI output format: "Transaction Id <hash>"
-    const txHashMatch = deployResult.stdout.match(/Transaction Id ([A-Za-z0-9]+)/) || 
-                        deployResult.stderr.match(/Transaction Id ([A-Za-z0-9]+)/)
-    const transactionHash = txHashMatch ? txHashMatch[1] : null
+    const account = await near.account(accountId)
+    const deployResult = await account.deployContract(wasmBuffer)
+    const transactionHash = deployResult.transaction.hash
+    console.log(`✓ Contract deployed. Transaction: ${transactionHash}`)
     
     // Initialize contract if initMethod and initArgs are provided
-    let initResult = null
     let initialized = false
+    let initError = null
     if (options.initMethod) {
       const initMethodName = options.initMethod
-      const initArgs = JSON.stringify(options.initArgs || {})
+      const initArgs = options.initArgs || {}
       
-      console.log(`Initializing contract with ${initMethodName}(${initArgs})...`)
-      
-      const initCommand = `npx near call ${contractAccountId} ${initMethodName} --args '${initArgs}' --useAccount ${accountId} --networkId ${network}`
+      console.log(`Initializing contract with ${initMethodName}(${JSON.stringify(initArgs)})...`)
       
       try {
-        initResult = await execAsync(initCommand, {
-          maxBuffer: 10 * 1024 * 1024,
-          timeout: 60000,
-          env: {
-            ...process.env,
-            NEAR_ENV: network
-          }
+        await account.functionCall({
+          contractId: contractAccountId,
+          methodName: initMethodName,
+          args: initArgs
         })
-        console.log('Init stdout:', initResult.stdout)
         initialized = true
+        console.log('✓ Contract initialized')
       } catch (error) {
         console.warn('Initialization failed (this may be normal if contract was already initialized):', error.message)
-        // Don't throw - deployment succeeded even if init failed
-        initResult = { error: error.message }
+        initError = error.message
       }
-    }
-    
-    // Clean up temp file
-    if (tempWasmPath && existsSync(tempWasmPath)) {
-      await rm(tempWasmPath, { force: true }).catch(() => {})
     }
     
     const deploymentTime = (Date.now() - startTime) / 1000
@@ -148,17 +120,11 @@ export async function deployContract(wasmBuffer, options = {}) {
       explorerUrl: transactionHash ? `https://explorer.${network}.near.org/transactions/${transactionHash}` : null,
       accountUrl: `https://explorer.${network}.near.org/accounts/${contractAccountId}`,
       initialized,
-      initError: initResult?.error || null
+      initError
     }
     
   } catch (error) {
     console.error('Deployment error:', error)
-    
-    // Clean up temp file on error
-    if (tempWasmPath && existsSync(tempWasmPath)) {
-      await rm(tempWasmPath, { force: true }).catch(() => {})
-    }
-    
     throw {
       success: false,
       error: error.message,
@@ -168,7 +134,7 @@ export async function deployContract(wasmBuffer, options = {}) {
 }
 
 /**
- * Call a contract method using NEAR CLI
+ * Call a contract method using near-api-js (programmatic, consistent with deployToSubaccount)
  * 
  * @param {string} contractAccountId - The contract account ID
  * @param {string} methodName - The method to call
@@ -181,62 +147,45 @@ export async function deployContract(wasmBuffer, options = {}) {
  */
 export async function callContract(contractAccountId, methodName, args = {}, options = {}) {
   try {
-    const { accountId, network } = await setupNearCredentials()
+    const { near, accountId, network } = await setupNearConnection()
     const callerAccountId = options.accountId || accountId
     
-    const argsJson = JSON.stringify(args)
-    let command = `npx near call ${contractAccountId} ${methodName} --args '${argsJson}' --useAccount ${callerAccountId} --networkId ${network}`
+    console.log(`Calling ${contractAccountId}.${methodName}(${JSON.stringify(args)})`)
     
-    // Add optional parameters
+    const account = await near.account(callerAccountId)
+    
+    const callOptions = {
+      contractId: contractAccountId,
+      methodName,
+      args
+    }
+    
     if (options.deposit) {
-      command += ` --deposit ${options.deposit}`
+      callOptions.attachedDeposit = parseNearAmount(options.deposit)
     }
     if (options.gas) {
-      command += ` --gas ${options.gas}`
+      callOptions.gas = options.gas
     }
     
-    console.log(`Calling ${contractAccountId}.${methodName}(${argsJson})`)
-    
-    const result = await execAsync(command, {
-      maxBuffer: 10 * 1024 * 1024,
-      timeout: 60000,
-      env: {
-        ...process.env,
-        NEAR_ENV: network
-      }
-    })
-    
-    // Try to parse the result from stdout
-    let parsedResult = null
-    try {
-      // NEAR CLI outputs the result as the last line
-      const lines = result.stdout.trim().split('\n')
-      const lastLine = lines[lines.length - 1]
-      parsedResult = JSON.parse(lastLine)
-    } catch (e) {
-      // If parsing fails, return raw output
-      parsedResult = result.stdout
-    }
+    const result = await account.functionCall(callOptions)
     
     return {
       success: true,
-      result: parsedResult,
-      stdout: result.stdout,
-      stderr: result.stderr
+      result: result,
+      transactionHash: result.transaction.hash,
+      explorerUrl: `https://explorer.${network}.near.org/transactions/${result.transaction.hash}`
     }
   } catch (error) {
     console.error('Contract call error:', error)
     throw {
       success: false,
-      error: error.message,
-      stdout: error.stdout,
-      stderr: error.stderr
+      error: error.message
     }
   }
 }
 
 /**
- * View a contract method using NEAR CLI (read-only, no gas cost)
+ * View a contract method using near-api-js (read-only, no gas cost)
  * 
  * @param {string} contractAccountId - The contract account ID
  * @param {string} methodName - The view method to call
@@ -245,56 +194,35 @@ export async function callContract(contractAccountId, methodName, args = {}, opt
  */
 export async function viewContract(contractAccountId, methodName, args = {}) {
   try {
-    const { network } = await setupNearCredentials()
+    const { near, network } = await setupNearConnection()
     
-    const argsJson = JSON.stringify(args)
-    const command = `npx near view ${contractAccountId} ${methodName} --args '${argsJson}' --networkId ${network}`
+    console.log(`Viewing ${contractAccountId}.${methodName}(${JSON.stringify(args)})`)
     
-    console.log(`Viewing ${contractAccountId}.${methodName}(${argsJson})`)
-    
-    const result = await execAsync(command, {
-      maxBuffer: 10 * 1024 * 1024,
-      timeout: 30000,
-      env: {
-        ...process.env,
-        NEAR_ENV: network
-      }
+    const account = await near.account(contractAccountId)
+    const result = await account.viewFunction({
+      contractId: contractAccountId,
+      methodName,
+      args
     })
-    
-    // Try to parse the result from stdout
-    let parsedResult = null
-    try {
-      // NEAR CLI outputs the result as the last line
-      const lines = result.stdout.trim().split('\n')
-      const lastLine = lines[lines.length - 1]
-      parsedResult = JSON.parse(lastLine)
-    } catch (e) {
-      // If parsing fails, return raw output
-      parsedResult = result.stdout
-    }
     
     return {
       success: true,
-      result: parsedResult,
-      stdout: result.stdout,
-      stderr: result.stderr
+      result: result
     }
   } catch (error) {
     console.error('Contract view error:', error)
     throw {
       success: false,
-      error: error.message,
-      stdout: error.stdout,
-      stderr: error.stderr
+      error: error.message
     }
   }
 }
 
 /**
- * Check if NEAR credentials are configured
+ * Check if NEAR credentials are configured (always true in development)
  */
 export function areCredentialsConfigured() {
-  return !!(process.env.NEAR_ACCOUNT_ID && process.env.NEAR_PRIVATE_KEY)
+  return true // Hardcoded credentials always available
 }
 
 /**
@@ -336,7 +264,7 @@ export async function deployToSubaccount(wasmBuffer, options = {}) {
     
     // Setup NEAR connection
     const keyStore = new keyStores.InMemoryKeyStore()
-    const parentKeyPair = KeyPair.fromString(process.env.NEAR_PRIVATE_KEY)
+    const parentKeyPair = KeyPair.fromString('ed25519:4YUnd6qTdKcVgB5V1ZApjVKzMm2gwXtFTfAnABjFbm6vXGhQvpbNovaLqQTsE7wGTBtArYTazaRwqn9sd4txcAgr')
     await keyStore.setKey(network, parentAccountId, parentKeyPair)
     
     // Generate keypair for subaccount

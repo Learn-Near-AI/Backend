@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { buildContract } from './build-contract.js'
 import { buildRustContract } from './build-rust-contract.js'
-import { deployContract, deployToSubaccount, callContract, viewContract, areCredentialsConfigured } from './deploy-contract.js'
+import { deployContract, deployToSubaccount, callContract, viewContract } from './deploy-contract.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -109,13 +109,7 @@ app.post('/api/compile', async (req, res) => {
 // Deploy contract endpoint
 app.post('/api/deploy', async (req, res) => {
   try {
-    // Check if credentials are configured
-    if (!areCredentialsConfigured()) {
-      return res.status(503).json({ 
-        success: false,
-        error: 'NEAR CLI deployment not configured. Please set NEAR_ACCOUNT_ID and NEAR_PRIVATE_KEY environment variables.' 
-      })
-    }
+    // Credentials are hardcoded, always available
 
     const { wasmBase64, contractAccountId, initMethod, initArgs, useSubaccount, userId, projectId } = req.body
 
@@ -160,13 +154,6 @@ app.post('/api/deploy', async (req, res) => {
 // Call contract method endpoint
 app.post('/api/contract/call', async (req, res) => {
   try {
-    if (!areCredentialsConfigured()) {
-      return res.status(503).json({ 
-        success: false,
-        error: 'NEAR CLI not configured. Please set NEAR_ACCOUNT_ID and NEAR_PRIVATE_KEY environment variables.' 
-      })
-    }
-
     const { contractAccountId, methodName, args, accountId, deposit, gas } = req.body
 
     if (!contractAccountId || !methodName) {
@@ -196,13 +183,6 @@ app.post('/api/contract/call', async (req, res) => {
 // View contract method endpoint (read-only)
 app.post('/api/contract/view', async (req, res) => {
   try {
-    if (!areCredentialsConfigured()) {
-      return res.status(503).json({ 
-        success: false,
-        error: 'NEAR CLI not configured. Please set NEAR_ACCOUNT_ID and NEAR_PRIVATE_KEY environment variables.' 
-      })
-    }
-
     const { contractAccountId, methodName, args } = req.body
 
     if (!contractAccountId || !methodName) {
@@ -227,14 +207,11 @@ app.post('/api/contract/view', async (req, res) => {
 
 // Check NEAR CLI configuration status
 app.get('/api/near/status', (req, res) => {
-  const configured = areCredentialsConfigured()
   res.json({
-    configured,
-    accountId: configured ? process.env.NEAR_ACCOUNT_ID : null,
-    network: process.env.NEAR_NETWORK || 'testnet',
-    message: configured 
-      ? 'NEAR CLI is configured and ready' 
-      : 'NEAR CLI not configured. Set NEAR_ACCOUNT_ID and NEAR_PRIVATE_KEY environment variables.'
+    configured: true,
+    accountId: 'softquiche5250.testnet',
+    network: 'testnet',
+    message: 'NEAR CLI is configured and ready'
   })
 })
 
@@ -246,12 +223,7 @@ app.listen(PORT, () => {
   console.log(`📞 Call endpoint: POST http://localhost:${PORT}/api/contract/call`)
   console.log(`👁️  View endpoint: POST http://localhost:${PORT}/api/contract/view`)
   console.log(`🔍 NEAR Status: GET http://localhost:${PORT}/api/near/status`)
-  
-  if (areCredentialsConfigured()) {
-    console.log(`✅ NEAR CLI configured for account: ${process.env.NEAR_ACCOUNT_ID} on ${process.env.NEAR_NETWORK || 'testnet'}`)
-  } else {
-    console.log(`⚠️  NEAR CLI not configured. Set NEAR_ACCOUNT_ID and NEAR_PRIVATE_KEY to enable deployment.`)
-  }
+  console.log(`✅ NEAR CLI configured for account: softquiche5250.testnet on testnet`)
 })
 
 

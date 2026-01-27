@@ -1,12 +1,44 @@
-node_modules
-npm-debug.log
-temp-builds
-target
-.git
-.gitignore
-README.md
+# Node modules (will be installed in container)
+node_modules/
+npm-debug.log*
+
+# Build directories
+temp-builds/
+persistent-builds/
+shared-target/
+base-project/target/
+
+# Logs
+*.log
+*.pid
+
+# Environment variables
 .env
 .env.local
-*.log
-.DS_Store
 
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Test outputs
+test-output/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Test scripts
+test-*.ps1
+test-*.sh
+test-*.js
+
+# Temporary files
+backend.pid

@@ -1,16 +1,32 @@
-# Use a base image with both Node.js and Rust (using Rust 1.85+ for near-sdk 5.24.0 support)
-FROM rust:1.85-slim as rust-base
+# Use Node.js LTS version
+FROM node:20-slim
 
-# Install curl and other dependencies, then Node.js 20
-RUN apt-get update && \
-    apt-get install -y curl ca-certificates gnupg && \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# Install Rust and Cargo (needed to compile user-submitted Rust contracts on-demand)
+# The backend is Node.js, but it compiles Rust code via cargo build
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    pkg-config \
+    libudev-dev \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install wasm32 target for Rust
+# Add Rust to PATH
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install wasm32-unknown-unknown target for NEAR contract compilation
 RUN rustup target add wasm32-unknown-unknown
+
+# Install cargo-near (NEAR-specific Cargo plugin for contract compilation and ABI generation)
+RUN cargo install cargo-near --locked
+
+# Install binaryen (provides wasm-opt for WASM optimization)
+RUN npm install -g binaryen
+
+# Install NEAR CLI (new near-cli-rs) globally (for manual/testing purposes)
+# Note: For automated backend operations, we use near-api-js programmatically
+RUN npm install -g near-cli-rs@latest
 
 # Set working directory
 WORKDIR /app
@@ -18,34 +34,14 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install Node.js dependencies (including dev dependencies for esbuild and near-sdk-js)
-RUN npm install
+# Install dependencies
+RUN npm ci --only=production
 
-# Pre-install near-sdk-js for JS/TS compilation caching (speeds up compilation 20-30x)
-RUN npm install near-sdk-js@2.0.0 --legacy-peer-deps
-
-# Install NEAR CLI globally
-RUN npm install -g near-cli
-
-# Install additional build tools needed for near-sdk-js compilation
-RUN apt-get update && \
-    apt-get install -y python3 make g++ && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Copy backend source code
+# Copy application files
 COPY . .
 
-# Create necessary directories for builds, caching, and NEAR credentials
-RUN mkdir -p temp-builds base-project persistent-builds shared-target /root/.near-credentials
-
-# Expose port
+# Expose port (fly.io will set PORT env var)
 EXPOSE 3001
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3001/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 # Start the server
 CMD ["node", "server.js"]
-
