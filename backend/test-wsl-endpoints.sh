@@ -2,6 +2,7 @@
 
 # Comprehensive backend endpoint testing script for WSL
 # Tests all endpoints and retrieves contract statistics
+# Enhanced with timing measurements
 
 # Don't exit on error - we want to test all endpoints
 set +e
@@ -17,11 +18,37 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Test counter
 TESTS_PASSED=0
 TESTS_FAILED=0
+
+# Timing variables
+TOTAL_START_TIME=$(date +%s%3N)
+COMPILE_TIME=0
+DEPLOY_TIME=0
+VIEW_TIME=0
+CALL_TIME=0
+
+# Function to get elapsed time in milliseconds
+get_elapsed_ms() {
+    local start=$1
+    local end=$(date +%s%3N)
+    echo $((end - start))
+}
+
+# Function to format time
+format_time() {
+    local ms=$1
+    if [ $ms -lt 1000 ]; then
+        echo "${ms}ms"
+    else
+        local seconds=$(echo "scale=2; $ms / 1000" | bc)
+        echo "${seconds}s"
+    fi
+}
 
 # Function to print test header
 print_header() {
@@ -29,6 +56,13 @@ print_header() {
     echo -e "${BLUE}========================================${NC}"
     echo -e "${BLUE}$1${NC}"
     echo -e "${BLUE}========================================${NC}"
+}
+
+# Function to print timing info
+print_timing() {
+    local duration=$1
+    local label=$2
+    echo -e "${CYAN}⏱  $label: $(format_time $duration)${NC}"
 }
 
 # Function to print test result
@@ -86,7 +120,10 @@ echo ""
 
 # Test 1: Health Check
 print_header "Test 1: Health Check Endpoint"
+test_start=$(date +%s%3N)
 health_response=$(api_call "GET" "/api/health" "" 200)
+test_duration=$(get_elapsed_ms $test_start)
+
 if echo "$health_response" | grep -q '"status":"ok"'; then
     print_result 0 "Health check endpoint"
     echo "Response: $health_response"
@@ -94,16 +131,21 @@ else
     print_result 1 "Health check endpoint"
     echo "Response: $health_response"
 fi
+print_timing $test_duration "Health check time"
 
 # Test 2: NEAR Status Check
 print_header "Test 2: NEAR Status Endpoint"
+test_start=$(date +%s%3N)
 status_response=$(api_call "GET" "/api/near/status" "" 200)
+test_duration=$(get_elapsed_ms $test_start)
+
 echo "$status_response" | jq '.' 2>/dev/null || echo "$status_response"
 if echo "$status_response" | grep -q '"configured":true'; then
     print_result 0 "NEAR status endpoint"
 else
     print_result 1 "NEAR status endpoint"
 fi
+print_timing $test_duration "Status check time"
 
 # Test 3: Compile Contract
 print_header "Test 3: Compile Contract Endpoint"
@@ -112,7 +154,11 @@ compile_data='{
     "language": "Rust"
 }'
 
+echo "Starting compilation..."
+compile_start=$(date +%s%3N)
 compile_response=$(api_call "POST" "/api/compile" "$compile_data" 200)
+COMPILE_TIME=$(get_elapsed_ms $compile_start)
+
 echo "$compile_response" | jq '.' 2>/dev/null || echo "$compile_response"
 
 if echo "$compile_response" | grep -q '"success":true'; then
@@ -120,8 +166,12 @@ if echo "$compile_response" | grep -q '"success":true'; then
     WASM_BASE64=$(echo "$compile_response" | jq -r '.wasm' 2>/dev/null || echo "")
     WASM_SIZE=$(echo "$compile_response" | jq -r '.size' 2>/dev/null || echo "")
     echo "WASM Size: $WASM_SIZE bytes"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    print_timing $COMPILE_TIME "COMPILATION TIME"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 else
     print_result 1 "Compile contract endpoint"
+    print_timing $COMPILE_TIME "Compilation time (failed)"
     echo "Compilation failed. Cannot proceed with deployment tests."
     exit 1
 fi
@@ -140,7 +190,11 @@ deploy_data=$(cat <<EOF
 EOF
 )
 
+echo "Starting deployment..."
+deploy_start=$(date +%s%3N)
 deploy_response=$(api_call "POST" "/api/deploy" "$deploy_data" 200)
+DEPLOY_TIME=$(get_elapsed_ms $deploy_start)
+
 echo "$deploy_response" | jq '.' 2>/dev/null || echo "$deploy_response"
 
 if echo "$deploy_response" | grep -q '"success":true'; then
@@ -158,8 +212,10 @@ if echo "$deploy_response" | grep -q '"success":true'; then
     echo "$deploy_response" | jq -r '.accountUrl // empty' 2>/dev/null | while read url; do
         [ -n "$url" ] && echo "Account Explorer: $url"
     done
+    print_timing $DEPLOY_TIME "Deployment time"
 else
     print_result 1 "Deploy contract endpoint"
+    print_timing $DEPLOY_TIME "Deployment time (failed)"
     echo "Deployment failed. Cannot proceed with contract interaction tests."
     exit 1
 fi
@@ -180,19 +236,25 @@ view_data=$(cat <<EOF
 EOF
 )
 
+view_start=$(date +%s%3N)
 view_response=$(api_call "POST" "/api/contract/view" "$view_data" 200)
+VIEW_TIME=$(get_elapsed_ms $view_start)
+
 echo "$view_response" | jq '.' 2>/dev/null || echo "$view_response"
 
 if echo "$view_response" | grep -q '"success":true'; then
     print_result 0 "View contract method endpoint"
     RESULT=$(echo "$view_response" | jq -r '.result' 2>/dev/null || echo "")
     echo "Method result: $RESULT"
+    print_timing $VIEW_TIME "View method time"
 else
     print_result 1 "View contract method endpoint"
+    print_timing $VIEW_TIME "View method time (failed)"
 fi
 
 # Test 6: Get Contract Statistics
 print_header "Test 6: Contract Statistics"
+stats_start=$(date +%s%3N)
 echo "Fetching contract statistics using NEAR CLI..."
 
 # Get account state
@@ -248,6 +310,9 @@ if command -v jq &> /dev/null; then
     fi
 fi
 
+stats_duration=$(get_elapsed_ms $stats_start)
+print_timing $stats_duration "Statistics retrieval time"
+
 # Test 7: Call Contract Method (Change Method)
 print_header "Test 7: Call Contract Method (Change Method)"
 call_data=$(cat <<EOF
@@ -259,13 +324,17 @@ call_data=$(cat <<EOF
 EOF
 )
 
+call_start=$(date +%s%3N)
 call_response=$(api_call "POST" "/api/contract/call" "$call_data" 200)
+CALL_TIME=$(get_elapsed_ms $call_start)
+
 echo "$call_response" | jq '.' 2>/dev/null || echo "$call_response"
 
 if echo "$call_response" | grep -q '"success":true'; then
     print_result 0 "Call contract method endpoint"
     CALL_TX=$(echo "$call_response" | jq -r '.transactionHash' 2>/dev/null || echo "")
     echo "Transaction Hash: $CALL_TX"
+    print_timing $CALL_TIME "Contract call time"
     
     # Wait a bit for the call to finalize
     echo "Waiting 3 seconds for transaction to finalize..."
@@ -283,9 +352,13 @@ if echo "$call_response" | grep -q '"success":true'; then
 EOF
 )
     
+    verify_start=$(date +%s%3N)
     counter_response=$(api_call "POST" "/api/contract/view" "$counter_data" 200)
+    verify_duration=$(get_elapsed_ms $verify_start)
+    
     COUNTER_VALUE=$(echo "$counter_response" | jq -r '.result' 2>/dev/null || echo "")
     echo "Counter value: $COUNTER_VALUE"
+    print_timing $verify_duration "Counter verification time"
     
     if [ "$COUNTER_VALUE" = "1" ]; then
         echo -e "${GREEN}✓ Counter incremented successfully!${NC}"
@@ -294,13 +367,42 @@ EOF
     fi
 else
     print_result 1 "Call contract method endpoint"
+    print_timing $CALL_TIME "Contract call time (failed)"
 fi
+
+# Calculate total time
+TOTAL_END_TIME=$(date +%s%3N)
+TOTAL_TIME=$((TOTAL_END_TIME - TOTAL_START_TIME))
 
 # Summary
 print_header "Test Summary"
 echo "Tests Passed: $TESTS_PASSED"
 echo "Tests Failed: $TESTS_FAILED"
 echo ""
+
+# Detailed timing breakdown
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${CYAN}        TIMING BREAKDOWN${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+print_timing $COMPILE_TIME "Compilation"
+print_timing $DEPLOY_TIME "Deployment"
+print_timing $VIEW_TIME "View Method Call"
+print_timing $CALL_TIME "Change Method Call"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+print_timing $TOTAL_TIME "TOTAL TEST SUITE TIME"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# Calculate percentages
+if [ $TOTAL_TIME -gt 0 ]; then
+    compile_pct=$(echo "scale=1; ($COMPILE_TIME * 100) / $TOTAL_TIME" | bc)
+    deploy_pct=$(echo "scale=1; ($DEPLOY_TIME * 100) / $TOTAL_TIME" | bc)
+    
+    echo -e "${YELLOW}Time Distribution:${NC}"
+    echo "  Compilation: ${compile_pct}%"
+    echo "  Deployment: ${deploy_pct}%"
+    echo ""
+fi
 
 if [ $TESTS_FAILED -eq 0 ]; then
     echo -e "${GREEN}All tests passed! ✓${NC}"

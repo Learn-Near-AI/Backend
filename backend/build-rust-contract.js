@@ -7,6 +7,46 @@ import { existsSync } from 'fs'
 
 const execAsync = promisify(exec)
 
+// Shared Cargo target directory so dependency artifacts are reused across builds.
+// Only one Rust build runs at a time (see buildLock below).
+const sharedTargetDir = join(process.cwd(), 'temp-builds', 'cargo-target-shared')
+
+// Serialize Rust compiles: one build at a time so shared target is not corrupted.
+let buildLock = Promise.resolve()
+
+/**
+ * Pre-warm the shared Cargo target by building base-project once at startup.
+ * Populates sharedTargetDir with dependency artifacts so the first user compile
+ * only rebuilds the contract crate. Call before or when the server starts.
+ * @returns {Promise<void>} Resolves when warmup completes; rejects on failure.
+ */
+export async function warmupSharedTarget() {
+  const baseProjectPath = join(process.cwd(), 'base-project')
+  await ensureBaseProject(baseProjectPath)
+  await mkdir(sharedTargetDir, { recursive: true })
+
+  console.log('Pre-warming shared Cargo target (building base-project)...')
+  const startTime = Date.now()
+
+  try {
+    await execAsync('cargo near build non-reproducible-wasm', {
+      cwd: baseProjectPath,
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 900000,
+      env: {
+        ...process.env,
+        CARGO_TARGET_DIR: sharedTargetDir,
+      },
+    })
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+    console.log(`✓ Pre-warm complete in ${elapsed}s; shared target ready.`)
+  } catch (err) {
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+    console.warn(`Pre-warm failed after ${elapsed}s (first compile may be slow):`, err.message)
+    throw err
+  }
+}
+
 /**
  * Recursively copy directory
  */
@@ -232,75 +272,66 @@ function convertToNewSyntax(sourceCode) {
 }
 
 /**
- * Builds a NEAR contract from Rust source code
- * 
+ * Builds a NEAR contract from Rust source code.
+ * Uses a shared Cargo target dir so dependency artifacts are reused (faster subsequent builds).
+ * Only one Rust build runs at a time (serialized via buildLock).
+ *
  * @param {string} sourceCode - The Rust contract source code
  * @param {string} projectId - Optional project ID (ignored, kept for API compatibility)
  * @returns {Promise<Object>} Compilation result with stdout, stderr, wasm, and abi
  */
 export async function buildRustContract(sourceCode, projectId = null) {
+  const next = buildLock.catch(() => {}).then(() => runRustBuild(sourceCode))
+  buildLock = next
+  return next
+}
+
+async function runRustBuild(sourceCode) {
   const baseProjectPath = join(process.cwd(), 'base-project')
-  
-  // Convert old syntax to new syntax if needed
+
   const convertedCode = convertToNewSyntax(sourceCode)
-  
-  // Generate temporary project directory (no caching)
   const tempDir = join(process.cwd(), 'temp-builds', randomBytes(8).toString('hex'))
   const projectDir = tempDir
-  
   const startTime = Date.now()
 
   try {
-    // Ensure base project exists (template only, no pre-building)
     await ensureBaseProject(baseProjectPath)
-    
-    // Setup project directory
     await mkdir(projectDir, { recursive: true })
-    // Copy base project template (excluding target directory)
+    await mkdir(sharedTargetDir, { recursive: true })
     await copyDir(baseProjectPath, projectDir)
-    
-    // Write user's code to lib.rs
+
     const libRsPath = join(projectDir, 'src', 'lib.rs')
     await writeFile(libRsPath, convertedCode, 'utf-8')
-    
-    // Use cargo-near build for NEAR-specific compilation (generates WASM + ABI)
-    // cargo-near builds in release mode by default (uses Cargo's release profile)
-    // Using non-reproducible-wasm flag to skip interactive prompt (recommended for local development)
+
     console.log(`Compiling Rust contract in: ${projectDir}`)
-    console.log('⏳ This may take 5-15 minutes on first build (downloading dependencies)...')
-    
+    console.log('⏳ First build: 5–15 min (deps). Later builds: much faster (shared target).')
+
     const compileResult = await execAsync('cargo near build non-reproducible-wasm', {
       cwd: projectDir,
-      maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large outputs
-      timeout: 900000, // 15 minute timeout to prevent indefinite hangs
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 900000,
       env: {
         ...process.env,
-        // No CARGO_TARGET_DIR - use local target directory for each build
-      }
+        CARGO_TARGET_DIR: sharedTargetDir,
+      },
     })
-    
-    // Log compilation output for debugging
-    if (compileResult.stdout) {
-      console.log('Build output:', compileResult.stdout)
-    }
-    if (compileResult.stderr) {
-      console.log('Build warnings:', compileResult.stderr)
-    }
-    
+
+    if (compileResult.stdout) console.log('Build output:', compileResult.stdout)
+    if (compileResult.stderr) console.log('Build warnings:', compileResult.stderr)
+
     const compilationTime = (Date.now() - startTime) / 1000
-    
-    // Extract WASM file from cargo-near output directory
-    // cargo-near outputs to target/near/ directory
-    const wasmPath = join(projectDir, 'target', 'near', 'contract.wasm')
-    
+
+    // cargo-near writes to target/near/; with CARGO_TARGET_DIR that is sharedTargetDir/near/
+    const nearOutDir = join(sharedTargetDir, 'near')
+    const wasmPath = join(nearOutDir, 'contract.wasm')
+    const abiPath = join(nearOutDir, 'contract.json')
+
     let wasmBuffer = null
     let wasmSize = 0
     let abi = null
     let originalSize = 0
-    
+
     try {
-      // Try to load ABI from cargo-near output
-      const abiPath = join(projectDir, 'target', 'near', 'contract.json')
       if (existsSync(abiPath)) {
         try {
           const abiContent = await readFile(abiPath, 'utf-8')
@@ -310,50 +341,39 @@ export async function buildRustContract(sourceCode, projectId = null) {
           console.warn('Could not parse ABI file:', abiError.message)
         }
       }
-      
+
       if (existsSync(wasmPath)) {
         wasmBuffer = await readFile(wasmPath)
         originalSize = wasmBuffer.length
         wasmSize = originalSize
         console.log(`✓ WASM file compiled: ${originalSize} bytes`)
-        
-        // Apply wasm-opt optimization to further reduce size
+
         try {
           const optimizedWasmPath = join(projectDir, 'contract_optimized.wasm')
-          const wasmOptResult = await execAsync(`wasm-opt -Oz -o "${optimizedWasmPath}" "${wasmPath}"`, {
+          await execAsync(`wasm-opt -Oz -o "${optimizedWasmPath}" "${wasmPath}"`, {
             maxBuffer: 10 * 1024 * 1024,
-            timeout: 60000 // 60 second timeout
+            timeout: 60000,
           })
-          
+
           if (existsSync(optimizedWasmPath)) {
             const optimizedBuffer = await readFile(optimizedWasmPath)
             const optimizedSize = optimizedBuffer.length
             const reduction = ((originalSize - optimizedSize) / originalSize * 100).toFixed(1)
-            
             console.log(`✓ WASM optimized: ${originalSize} → ${optimizedSize} bytes (${reduction}% reduction)`)
-            
-            // Use optimized WASM
             wasmBuffer = optimizedBuffer
             wasmSize = optimizedSize
-            
-            // Clean up temporary optimized file
             await rm(optimizedWasmPath, { force: true }).catch(() => {})
           }
         } catch (wasmOptError) {
-          // wasm-opt might not be installed, continue with unoptimized WASM
           console.warn('wasm-opt not available or failed (continuing with unoptimized WASM):', wasmOptError.message)
-          console.warn('To enable WASM optimization, install wasm-opt: npm install -g wasm-opt or binaryen')
         }
       } else {
-        console.warn(`WASM file not found at: ${wasmPath}`)
-        // Fallback: Try to find any .wasm file in the cargo-near output directory
-        const nearDir = join(projectDir, 'target', 'near')
         try {
-          if (existsSync(nearDir)) {
-            const files = await readdir(nearDir)
+          if (existsSync(nearOutDir)) {
+            const files = await readdir(nearOutDir)
             const wasmFile = files.find(f => f.endsWith('.wasm'))
             if (wasmFile) {
-              wasmBuffer = await readFile(join(nearDir, wasmFile))
+              wasmBuffer = await readFile(join(nearOutDir, wasmFile))
               wasmSize = wasmBuffer.length
               console.log(`✓ Found WASM file: ${wasmFile} (${wasmSize} bytes)`)
             }
@@ -365,16 +385,15 @@ export async function buildRustContract(sourceCode, projectId = null) {
     } catch (error) {
       console.warn('Could not extract WASM file:', error.message)
     }
-    
+
     if (!wasmBuffer) {
       throw new Error('WASM file was not generated. Compilation may have failed.')
     }
-    
-    // Clean up temporary project directory after successful build
+
     await rm(projectDir, { recursive: true, force: true }).catch(() => {
       console.warn('Warning: Could not clean up temporary build directory')
     })
-    
+
     return {
       success: true,
       exit_code: 0,
@@ -384,18 +403,16 @@ export async function buildRustContract(sourceCode, projectId = null) {
       wasmSize,
       abi,
       compilation_time: compilationTime,
-      project_path: null, // No persistent path
-      cached: false
+      project_path: null,
+      cached: false,
     }
   } catch (error) {
-    // Clean up temporary directory on error
     await rm(projectDir, { recursive: true, force: true }).catch(() => {})
-    
-    // Extract error information
+
     const exitCode = error.code || -1
     const stdout = error.stdout || ''
     const stderr = error.stderr || error.message || ''
-    
+
     throw {
       success: false,
       exit_code: exitCode,
@@ -405,7 +422,7 @@ export async function buildRustContract(sourceCode, projectId = null) {
       wasmSize: 0,
       abi: null,
       compilation_time: (Date.now() - startTime) / 1000,
-      error: error.message
+      error: error.message,
     }
   }
 }

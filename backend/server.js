@@ -3,7 +3,7 @@ import cors from 'cors'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { buildContract } from './build-contract.js'
-import { buildRustContract } from './build-rust-contract.js'
+import { buildRustContract, warmupSharedTarget } from './build-rust-contract.js'
 import { deployContract, deployToSubaccount, callContract, viewContract } from './deploy-contract.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -215,15 +215,23 @@ app.get('/api/near/status', (req, res) => {
   })
 })
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Backend server running on http://localhost:${PORT}`)
-  console.log(`📦 Compile endpoint: POST http://localhost:${PORT}/api/compile`)
-  console.log(`🚢 Deploy endpoint: POST http://localhost:${PORT}/api/deploy`)
-  console.log(`📞 Call endpoint: POST http://localhost:${PORT}/api/contract/call`)
-  console.log(`👁️  View endpoint: POST http://localhost:${PORT}/api/contract/view`)
-  console.log(`🔍 NEAR Status: GET http://localhost:${PORT}/api/near/status`)
-  console.log(`✅ NEAR CLI configured for account: softquiche5250.testnet on testnet`)
-})
+// Start server (after optional pre-warm)
+async function startServer() {
+  try {
+    await warmupSharedTarget()
+  } catch (err) {
+    console.warn('Pre-warm skipped or failed (first Rust compile may be slow):', err.message)
+  }
+  app.listen(PORT, () => {
+    console.log(`🚀 Backend server running on http://localhost:${PORT}`)
+    console.log(`📦 Compile endpoint: POST http://localhost:${PORT}/api/compile`)
+    console.log(`🚢 Deploy endpoint: POST http://localhost:${PORT}/api/deploy`)
+    console.log(`📞 Call endpoint: POST http://localhost:${PORT}/api/contract/call`)
+    console.log(`👁️  View endpoint: POST http://localhost:${PORT}/api/contract/view`)
+    console.log(`🔍 NEAR Status: GET http://localhost:${PORT}/api/near/status`)
+    console.log(`✅ NEAR CLI configured for account: softquiche5250.testnet on testnet`)
+  })
+}
+startServer()
 
 
