@@ -215,21 +215,21 @@ app.get('/api/near/status', (req, res) => {
   })
 })
 
-// Start server (after optional pre-warm)
+// Start server: listen on 0.0.0.0 so Fly.io proxy can reach us; warmup in background
 async function startServer() {
-  try {
-    await warmupSharedTarget()
-  } catch (err) {
-    console.warn('Pre-warm skipped or failed (first Rust compile may be slow):', err.message)
-  }
-  app.listen(PORT, () => {
-    console.log(`🚀 Backend server running on http://localhost:${PORT}`)
+  const host = '0.0.0.0'
+  app.listen(PORT, host, () => {
+    console.log(`🚀 Backend server running on http://${host}:${PORT}`)
     console.log(`📦 Compile endpoint: POST http://localhost:${PORT}/api/compile`)
     console.log(`🚢 Deploy endpoint: POST http://localhost:${PORT}/api/deploy`)
     console.log(`📞 Call endpoint: POST http://localhost:${PORT}/api/contract/call`)
     console.log(`👁️  View endpoint: POST http://localhost:${PORT}/api/contract/view`)
     console.log(`🔍 NEAR Status: GET http://localhost:${PORT}/api/near/status`)
     console.log(`✅ NEAR CLI configured for account: softquiche5250.testnet on testnet`)
+  })
+  // Pre-warm Rust target in background so first request isn't slow; don't block startup
+  warmupSharedTarget().catch((err) => {
+    console.warn('Pre-warm skipped or failed (first Rust compile may be slow):', err.message)
   })
 }
 startServer()

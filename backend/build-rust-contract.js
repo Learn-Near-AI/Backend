@@ -101,7 +101,10 @@ codegen-units = 1
 panic = "abort"
 `
     await writeFile(join(baseProjectPath, 'Cargo.toml'), cargoToml, 'utf-8')
-    
+
+    // Pin Rust to 1.86 so WASM is compatible with nearcore VM (1.87+ is not)
+    await writeFile(join(baseProjectPath, 'rust-toolchain.toml'), '[toolchain]\nchannel = "1.86.0"\n', 'utf-8')
+
     // Create default lib.rs with new syntax
     const defaultLibRs = `use near_sdk::near;
 use near_sdk::PanicOnDefault;

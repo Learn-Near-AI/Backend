@@ -15,18 +15,17 @@ RUN apt-get update && apt-get install -y \
 # Add Rust to PATH
 ENV PATH="/root/.cargo/bin:${PATH}"
 
+# Pin Rust to < 1.87 (1.87+ WASM is incompatible with nearcore VM)
+RUN rustup install 1.86.0 && rustup default 1.86.0
+
 # Install wasm32-unknown-unknown target for NEAR contract compilation
 RUN rustup target add wasm32-unknown-unknown
 
-# Install cargo-near (NEAR-specific Cargo plugin for contract compilation and ABI generation)
-RUN cargo install cargo-near --locked
+# Install cargo-near (NEAR-specific Cargo plugin; 0.17.x + locked deps for rustc 1.86)
+RUN cargo install cargo-near --version 0.17.0 --locked
 
 # Install binaryen (provides wasm-opt for WASM optimization)
 RUN npm install -g binaryen
-
-# Install NEAR CLI (new near-cli-rs) globally (for manual/testing purposes)
-# Note: For automated backend operations, we use near-api-js programmatically
-RUN npm install -g near-cli-rs@latest
 
 # Set working directory
 WORKDIR /app
