@@ -443,7 +443,7 @@ async function copyTemplateToDir(buildDir, language) {
 
 /**
  * Builds a NEAR contract from JavaScript/TypeScript source code
- * Uses /tmp (Linux native filesystem) to avoid Windows mount issues with clang/wasi-sdk
+ * Uses build pool: reuses node_modules in pool dirs to avoid copying on every request.
  * 
  * @param {string} sourceCode - The contract source code
  * @param {string} language - 'JavaScript' or 'TypeScript'
@@ -456,43 +456,27 @@ export async function buildContract(sourceCode, language) {
   }
 
   const startTime = Date.now()
-  
-  // Create a unique temp build directory in /tmp (Linux native filesystem)
-  // This avoids Windows mount issues with clang/wasi-sdk
-  const tempBuildId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-  const buildDir = join(BASE_DIR, `build-${tempBuildId}`)
-  let cleanupBuildDir = true // Flag to track if we should clean up
+  let buildDir = null
+  let isTemp = false
 
   try {
-    console.log(`Building ${language} contract in Linux-native temp directory: ${buildDir}`)
+    // Acquire a pool directory (reuses node_modules when present; only copies config + src on reuse)
+    const { buildDir: acquiredDir, isTemp: acquiredIsTemp } = await acquireBuildDirectory()
+    buildDir = acquiredDir
+    isTemp = acquiredIsTemp === true
 
-    // Copy template to temp build directory
-    console.log('📦 Copying template to temp build directory...')
-    const copyStartTime = Date.now()
-    
-    // Copy node_modules (the expensive part - near-sdk-js + deps)
-    await cp(join(TEMPLATE_DIR, 'node_modules'), join(buildDir, 'node_modules'), {
-      recursive: true,
-      force: true
-    })
-    
-    // Copy config files
-    await cp(join(TEMPLATE_DIR, 'package.json'), join(buildDir, 'package.json'))
-    await cp(join(TEMPLATE_DIR, 'tsconfig.json'), join(buildDir, 'tsconfig.json'))
-    
-    // Create src and build directories
+    console.log(`Building ${language} contract in ${buildDir}`)
+
+    // Copy template: full copy only when node_modules missing (first use of this dir); otherwise just config files
+    await copyTemplateToDir(buildDir, language)
+
+    // Ensure src and build exist (releaseBuildDirectory removes them between uses)
     await mkdir(join(buildDir, 'src'), { recursive: true })
     await mkdir(join(buildDir, 'build'), { recursive: true })
-    
-    const copyTime = ((Date.now() - copyStartTime) / 1000).toFixed(2)
-    console.log(`✓ Template copied in ${copyTime}s`)
 
-    // Always use JavaScript pipeline (treat jstest as JS-only)
-    // Any TypeScript should be transpiled to JS before reaching this backend
+    // Always use JavaScript pipeline (treat as JS-only; TypeScript should be transpiled before reaching backend)
     const ext = '.js'
     const contractFile = join(buildDir, 'src', `contract${ext}`)
-
-    // Write source code to file (backend assumes it is valid JavaScript)
     await writeFile(contractFile, sourceCode, 'utf-8')
     console.log(`✓ Contract code written to: ${contractFile}`)
 
@@ -502,38 +486,26 @@ export async function buildContract(sourceCode, language) {
     packageJson.scripts.build = `near-sdk-js build src/contract.js build/contract.wasm`
     await writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2), 'utf-8')
 
-    // Ensure clang and qjsc are executable (should already be from template, but ensure)
+    // Ensure clang and qjsc are executable (template/pool may already have correct permissions)
     const depsDir = join(buildDir, 'node_modules', 'near-sdk-js', 'lib', 'cli', 'deps')
     const clangPath = join(depsDir, 'wasi-sdk', 'bin', 'clang')
     const qjscPath = join(depsDir, 'qjsc')
-    
     if (existsSync(clangPath)) {
-      try {
-        await chmod(clangPath, 0o755)
-      } catch (e) {
-        // Ignore - permissions should already be correct on Linux native filesystem
-      }
+      try { await chmod(clangPath, 0o755) } catch (e) { /* ignore */ }
     }
-    
     if (existsSync(qjscPath)) {
-      try {
-        await chmod(qjscPath, 0o755)
-      } catch (e) {
-        // Ignore - permissions should already be correct on Linux native filesystem
-      }
+      try { await chmod(qjscPath, 0o755) } catch (e) { /* ignore */ }
     }
 
-    // Build using near-sdk-js in the temp directory (Linux native filesystem)
+    // Build using near-sdk-js
     console.log(`Running npm run build in ${buildDir}...`)
     const buildStartTime = Date.now()
-    
     const buildResult = await execAsync(`npm run build`, {
       cwd: buildDir,
       maxBuffer: 50 * 1024 * 1024,
       timeout: 240000,
       env: process.env
     })
-
     const buildTime = ((Date.now() - buildStartTime) / 1000).toFixed(2)
     console.log(`✓ Build completed in ${buildTime}s`)
 
@@ -544,31 +516,22 @@ export async function buildContract(sourceCode, language) {
     const compilationTime = (Date.now() - startTime) / 1000
     console.log(`✓ ${language} compilation completed in ${compilationTime.toFixed(2)}s`)
 
-    // Read the compiled WASM file
     const wasmPath = join(buildDir, 'build', 'contract.wasm')
-    
     if (!existsSync(wasmPath)) {
       throw new Error(`WASM file not found at ${wasmPath}. Build may have failed.`)
     }
-    
     const wasmBuffer = await readFile(wasmPath)
     console.log(`✓ WASM size: ${wasmBuffer.length} bytes`)
 
-    // Clean up temp build directory
-    cleanupBuildDir = true
-    await rm(buildDir, { recursive: true, force: true }).catch(() => {})
-    console.log(`✓ Cleaned up temp build directory`)
+    await releaseBuildDirectory(buildDir, isTemp)
+    if (!isTemp) {
+      console.log(`✓ Released build directory back to pool`)
+    }
 
     return wasmBuffer
   } catch (error) {
-    // Clean up temp build directory on error
-    if (cleanupBuildDir && existsSync(buildDir)) {
-      try {
-        await rm(buildDir, { recursive: true, force: true }).catch(() => {})
-        console.log(`✓ Cleaned up temp build directory after error`)
-      } catch (cleanupError) {
-        // Ignore cleanup errors
-      }
+    if (buildDir != null) {
+      await releaseBuildDirectory(buildDir, isTemp).catch(() => {})
     }
 
     // Extract useful information from stderr and stdout

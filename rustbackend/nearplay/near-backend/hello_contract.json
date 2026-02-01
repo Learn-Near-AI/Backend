@@ -1,5 +1,0 @@
-{
-  "user_id": "demo_user",
-  "project_id": "hello_near_v1",
-  "code": "use near_sdk::{env, near, AccountId, PanicOnDefault};\n\n#[near(contract_state)]\n#[derive(PanicOnDefault)]\npub struct HelloContract {\n    greeting: String,\n}\n\n#[near]\nimpl HelloContract {\n    #[init]\n    pub fn new() -> Self {\n        Self {\n            greeting: \"Hello NEAR!\".to_string(),\n        }\n    }\n\n    pub fn get_greeting(&self) -> String {\n        self.greeting.clone()\n    }\n\n    pub fn set_greeting(&mut self, greeting: String) {\n        env::log_str(&format!(\"Saving greeting: {}\", greeting));\n        self.greeting = greeting;\n    }\n\n    pub fn get_caller(&self) -> AccountId {\n        env::predecessor_account_id()\n    }\n}"
-}

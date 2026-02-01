@@ -35,7 +35,12 @@ app.get('/api/health', (req, res) => {
 // Compile contract endpoint
 app.post('/api/compile', async (req, res) => {
   try {
-    const { code, language, projectId } = req.body
+    const { code, language: rawLanguage, projectId, project_id } = req.body
+    const projectIdOrLegacy = projectId ?? project_id
+    const langMap = { javascript: 'JavaScript', typescript: 'TypeScript', rust: 'Rust' }
+    const language = typeof rawLanguage === 'string'
+      ? (langMap[rawLanguage.toLowerCase()] || rawLanguage)
+      : rawLanguage
 
     if (!code || !language) {
       return res.status(400).json({ error: 'Missing code or language' })
@@ -49,7 +54,7 @@ app.post('/api/compile', async (req, res) => {
 
     if (language === 'Rust') {
       try {
-        const result = await buildRustContract(code, projectId)
+        const result = await buildRustContract(code, projectIdOrLegacy)
         
         res.json({
           success: result.success,

@@ -335,9 +335,11 @@
     </div>
 
     <script>
-        const BACKEND_URL = 'http://localhost:8080';
+        // Node backend (backend/server.js) runs on 3001; Rust backend (rustbackend/...) runs on 8080
+        const BACKEND_URL = 'http://localhost:3001';
         let currentLanguage = 'JavaScript';
-        let compiledWasm = null;
+        let compiledWasm = null;       // truthy when we have something to deploy
+        let compiledWasmBase64 = null; // base64 WASM from compile (sent to backend on deploy)
         let currentUserId = 'user_' + Math.random().toString(36).substr(2, 9);
         let currentProjectId = 'project_' + Math.random().toString(36).substr(2, 9);
 
@@ -661,79 +663,79 @@ impl HelloWorldContract {
                 return;
             }
 
-            // Warn if trying to compile JavaScript (backend only supports Rust)
-            if (currentLanguage === 'JavaScript') {
-                showResult(false, 'JavaScript contracts are not supported. Please select Rust and use Rust contract syntax.');
-                return;
-            }
-
             showLoading();
 
             try {
-                const response = await fetch(`${BACKEND_URL}/compile`, {
+                const response = await fetch(`${BACKEND_URL}/api/compile`, {
                     method: 'POST',
+                    mode: 'cors',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        user_id: currentUserId,
-                        project_id: currentProjectId,
-                        code: code
+                        code: code,
+                        language: currentLanguage, // backend expects JavaScript | TypeScript | Rust
+                        projectId: currentProjectId
                     })
                 });
 
-                const data = await response.json();
+                const raw = await response.text();
+                let data;
+                try {
+                    data = raw ? JSON.parse(raw) : {};
+                } catch (_) {
+                    if (raw.trimStart().startsWith('<')) {
+                        throw new Error(
+                            'Backend returned HTML instead of JSON. Is the backend running? ' +
+                            'Node backend: npm start in backend/ (port 3001). Rust backend: port 8080 — set BACKEND_URL to http://localhost:8080 in index.html.'
+                        );
+                    }
+                    throw new Error(raw || 'Invalid response from backend');
+                }
 
                 hideLoading();
 
-                if (response.ok && data.success && data.data) {
-                    const compileData = data.data;
-                    
-                    // Check if compilation was actually successful
-                    if (compileData.success) {
-                        let compilationTime = compileData.details?.compilation_time;
-                        if (typeof compilationTime === 'number') {
-                            compilationTime = `${compilationTime.toFixed(2)}s`;
-                        }
-                        
-                        // Count ABI functions if available
-                        let abiFunctions = 0;
-                        if (compileData.abi && compileData.abi.body && compileData.abi.body.functions) {
-                            abiFunctions = compileData.abi.body.functions.length;
-                        }
-                        
-                        // Store project info for deployment (backend handles WASM internally)
-                        compiledWasm = true; // Mark as compiled
-                        document.getElementById('deployBtn').disabled = false;
-                        
-                        showResult(true, 'Contract compiled successfully!', {
-                            size: compileData.details?.wasm_size || 0,
-                            compilation_time: compilationTime || 'N/A',
-                            abi_functions: abiFunctions
-                        });
-                    } else {
-                        // Compilation failed even though API call succeeded
-                        const errorMessage = compileData.stderr || compileData.stdout || 'Compilation failed';
-                        compiledWasm = null;
-                        document.getElementById('deployBtn').disabled = true;
-                        showResult(false, 'Compilation failed', {
-                            error: errorMessage
-                        });
+                // Backend returns flat object: { success, wasm?, size?, details?, abi?, stderr?, ... }
+                const compileData = data;
+                const ok = response.ok && compileData.success;
+
+                if (ok && (compileData.wasm != null || compileData.size != null)) {
+                    let compilationTime = compileData.details?.compilation_time ?? compileData.compilation_time;
+                    if (typeof compilationTime === 'number') {
+                        compilationTime = `${compilationTime.toFixed(2)}s`;
                     }
-                } else {
-                    const errorMessage = data.data?.stderr || data.error?.details || data.error?.message || data.message || 'Unknown error';
-                    compiledWasm = null;
-                    document.getElementById('deployBtn').disabled = true;
-                    showResult(false, 'Compilation failed', {
-                        error: errorMessage
+                    let abiFunctions = 0;
+                    if (compileData.abi && compileData.abi.body && compileData.abi.body.functions) {
+                        abiFunctions = compileData.abi.body.functions.length;
+                    }
+                    compiledWasm = true;
+                    compiledWasmBase64 = compileData.wasm || null;
+                    document.getElementById('deployBtn').disabled = false;
+                    showResult(true, 'Contract compiled successfully!', {
+                        size: compileData.details?.wasm_size ?? compileData.size ?? 0,
+                        compilation_time: compilationTime || 'N/A',
+                        abi_functions: abiFunctions
                     });
+                } else if (!ok || !compileData.success) {
+                    const errorMessage = compileData.stderr || compileData.stdout || compileData.error?.details || compileData.error?.message || compileData.message || 'Compilation failed';
+                    compiledWasm = null;
+                    compiledWasmBase64 = null;
+                    document.getElementById('deployBtn').disabled = true;
+                    showResult(false, 'Compilation failed', { error: errorMessage });
+                } else {
+                    const errorMessage = data.error?.message || data.message || 'Unknown error';
+                    compiledWasm = null;
+                    compiledWasmBase64 = null;
+                    document.getElementById('deployBtn').disabled = true;
+                    showResult(false, 'Compilation failed', { error: errorMessage });
                 }
             } catch (error) {
                 hideLoading();
                 compiledWasm = null;
+                compiledWasmBase64 = null;
                 document.getElementById('deployBtn').disabled = true;
                 showResult(false, 'Failed to connect to backend', {
-                    error: error.message || 'Make sure the backend server is running on http://localhost:8080'
+                    error: error.message || `Make sure the backend server is running at ${BACKEND_URL}`
                 });
             }
         }
@@ -754,49 +756,64 @@ impl HelloWorldContract {
             document.getElementById('deployBtn').disabled = true;
 
             try {
-                const response = await fetch(`${BACKEND_URL}/deploy`, {
+                const response = await fetch(`${BACKEND_URL}/api/deploy`, {
                     method: 'POST',
+                    mode: 'cors',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        user_id: currentUserId,
-                        project_id: currentProjectId,
-                        account_id: contractAccountId || null
+                        wasmBase64: compiledWasmBase64,
+                        contractAccountId: contractAccountId && contractAccountId.trim() ? contractAccountId.trim() : undefined
                     })
                 });
 
-                const data = await response.json();
+                const rawDeploy = await response.text();
+                let data;
+                try {
+                    data = rawDeploy ? JSON.parse(rawDeploy) : {};
+                } catch (_) {
+                    if (rawDeploy.trimStart().startsWith('<')) {
+                        throw new Error(
+                            'Backend returned HTML instead of JSON. Is the backend running? ' +
+                            'Node backend: port 3001. Rust backend: port 8080 — set BACKEND_URL to http://localhost:8080 in index.html.'
+                        );
+                    }
+                    throw new Error(rawDeploy || 'Invalid response from backend');
+                }
 
                 hideLoading();
                 document.getElementById('loading').querySelector('p').textContent = 'Compiling contract... Please wait.';
 
-                if (response.ok && data.success && data.data) {
-                    const deployData = data.data;
+                // Backend returns { success?, contractId, transactionHash, explorerUrl, ... } (camelCase)
+                const deployData = data.data || data;
+                const success = response.ok && (data.success === true || deployData.contractId != null);
+                const contractId = deployData.contractId ?? deployData.contract_id;
+                const transactionHash = deployData.transactionHash ?? deployData.transaction_hash;
+                const explorerUrl = deployData.explorerUrl ?? deployData.explorer_url;
+
+                if (success && contractId) {
                     let html = `<h3>✅ Deployment Successful!</h3>`;
-                    html += `<p><strong>Contract deployed to: ${deployData.contract_id}</strong></p>`;
-                    if (deployData.transaction_hash) {
-                        html += `<p>Transaction: ${deployData.transaction_hash}</p>`;
+                    html += `<p><strong>Contract deployed to: ${contractId}</strong></p>`;
+                    if (transactionHash) {
+                        html += `<p>Transaction: ${transactionHash}</p>`;
                     }
-                    if (deployData.explorer_url) {
-                        html += `<p><a href="${deployData.explorer_url}" target="_blank" style="color: #667eea;">View in Explorer</a></p>`;
+                    if (explorerUrl) {
+                        html += `<p><a href="${explorerUrl}" target="_blank" style="color: #667eea;">View in Explorer</a></p>`;
                     }
-                    if (deployData.gas_used) {
-                        html += `<p>Gas Used: ${deployData.gas_used}</p>`;
+                    if (deployData.gasUsed != null || deployData.gas_used != null) {
+                        html += `<p>Gas Used: ${deployData.gasUsed ?? deployData.gas_used}</p>`;
                     }
                     if (deployData.details) {
-                        html += `<p>Network: ${deployData.details.network}</p>`;
-                        html += `<p>Deployed by: ${deployData.details.deployer_account}</p>`;
+                        html += `<p>Network: ${deployData.details.network || ''}</p>`;
+                        html += `<p>Deployed by: ${deployData.details.deployer_account || deployData.details.accountId || ''}</p>`;
                     }
-                    
                     const resultBox = document.getElementById('resultBox');
                     resultBox.className = 'result-box success show';
                     resultBox.innerHTML = html;
                 } else {
-                    const errorMessage = data.error?.details || data.error?.message || data.message || 'Unknown error';
-                    showResult(false, 'Deployment failed', {
-                        error: errorMessage
-                    });
+                    const errorMessage = data.error?.details ?? data.error?.message ?? data.error ?? data.message ?? 'Unknown error';
+                    showResult(false, 'Deployment failed', { error: typeof errorMessage === 'object' ? JSON.stringify(errorMessage) : errorMessage });
                 }
 
                 // Re-enable deploy button
@@ -807,7 +824,7 @@ impl HelloWorldContract {
                 document.getElementById('loading').querySelector('p').textContent = 'Compiling contract... Please wait.';
                 document.getElementById('deployBtn').disabled = false;
                 showResult(false, 'Failed to connect to backend', {
-                    error: error.message || 'Make sure the backend server is running on http://localhost:8080'
+                    error: error.message || `Make sure the backend server is running at ${BACKEND_URL}`
                 });
             }
         }
