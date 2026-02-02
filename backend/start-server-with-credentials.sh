@@ -3,8 +3,8 @@
 # Start backend server with NEAR credentials
 # Usage: ./start-server-with-credentials.sh
 
-export NEAR_ACCOUNT_ID="softquiche5250.testnet"
-export NEAR_PRIVATE_KEY="ed25519:4YUnd6qTdKcVgB5V1ZApjVKzMm2gwXtFTfAnABjFbm6vXGhQvpbNovaLqQTsE7wGTBtArYTazaRwqn9sd4txcAgr"
+export NEAR_ACCOUNT_ID="learn-near-by-example.testnet"
+export NEAR_PRIVATE_KEY="ed25519:2PLUhj5EReBqwx3RSLm7kqnBejTgeoKTsGaH1UqA63pPzjd4dnarmicm8tQkzwu56cJguKZBUBvvprEB9G4Eo6Py"
 export NEAR_NETWORK="testnet"
 
 echo "Starting backend server with NEAR credentials..."

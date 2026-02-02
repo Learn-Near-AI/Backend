@@ -10,6 +10,12 @@ crate-type = ["cdylib"]
 near-sdk = "5"
 borsh = "1"
 
+# Common, WASM-friendly crates pre-warmed for faster builds and available for user contracts.
+# These are safe defaults that work well with near-sdk 5 and Rust 1.86.0.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+near-contract-standards = "5"
+
 [profile.release]
 opt-level = "z"
 lto = "thin"

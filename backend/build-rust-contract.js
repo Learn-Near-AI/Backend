@@ -93,6 +93,9 @@ crate-type = ["cdylib"]
 [dependencies]
 near-sdk = "5"
 borsh = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+near-contract-standards = "5"
 
 [profile.release]
 opt-level = "z"

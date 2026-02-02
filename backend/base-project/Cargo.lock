@@ -112,7 +112,10 @@ name = "contract"
 version = "0.1.0"
 dependencies = [
  "borsh",
+ "near-contract-standards",
  "near-sdk",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -349,6 +352,15 @@ checksum = "91f75ff8eee73815c247d0e17f3c0b705f0e993922a5548acd2ad377aeb67fca"
 dependencies = [
  "borsh",
  "serde",
+]
+
+[[package]]
+name = "near-contract-standards"
+version = "5.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "284205bef7d7140d9754897729c6d04e47b3dec4bd7de83dd818e3ac7f58418a"
+dependencies = [
+ "near-sdk",
 ]
 
 [[package]]

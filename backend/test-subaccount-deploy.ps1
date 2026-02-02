@@ -1,8 +1,8 @@
 # Test subaccount deployment
 # First build a contract, then deploy it to a subaccount
 
-$env:NEAR_ACCOUNT_ID = "softquiche5250.testnet"
-$env:NEAR_PRIVATE_KEY = "ed25519:4YUnd6qTdKcVgB5V1ZApjVKzMm2gwXtFTfAnABjFbm6vXGhQvpbNovaLqQTsE7wGTBtArYTazaRwqn9sd4txcAgr"
+$env:NEAR_ACCOUNT_ID = "learn-near-by-example.testnet"
+$env:NEAR_PRIVATE_KEY = "ed25519:2PLUhj5EReBqwx3RSLm7kqnBejTgeoKTsGaH1UqA63pPzjd4dnarmicm8tQkzwu56cJguKZBUBvvprEB9G4Eo6Py"
 $env:NEAR_NETWORK = "testnet"
 
 Write-Host "=== Step 1: Building Contract ==="

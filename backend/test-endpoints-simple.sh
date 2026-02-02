@@ -4,8 +4,8 @@
 # Tests all endpoints and provides contract statistics
 
 BACKEND_URL="http://localhost:3001"
-NEAR_ACCOUNT_ID="${NEAR_ACCOUNT_ID:-softquiche5250.testnet}"
-NEAR_PRIVATE_KEY="${NEAR_PRIVATE_KEY:-ed25519:4YUnd6qTdKcVgB5V1ZApjVKzMm2gwXtFTfAnABjFbm6vXGhQvpbNovaLqQTsE7wGTBtArYTazaRwqn9sd4txcAgr}"
+NEAR_ACCOUNT_ID="${NEAR_ACCOUNT_ID:-learn-near-by-example.testnet}"
+NEAR_PRIVATE_KEY="${NEAR_PRIVATE_KEY:-ed25519:2PLUhj5EReBqwx3RSLm7kqnBejTgeoKTsGaH1UqA63pPzjd4dnarmicm8tQkzwu56cJguKZBUBvvprEB9G4Eo6Py}"
 NEAR_NETWORK="${NEAR_NETWORK:-testnet}"
 
 echo "=========================================="

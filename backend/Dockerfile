@@ -30,6 +30,16 @@ RUN npm install -g binaryen
 # Set working directory
 WORKDIR /app
 
+# Optional: pre-warm shared Cargo target during image build so first runtime
+# compilation is fast even on a brand new machine. This uses the same target
+# directory path as the runtime (temp-builds/cargo-target-shared). If the
+# warmup fails for any reason, we log and continue so deployments are not broken.
+COPY backend/base-project ./backend/base-project
+RUN mkdir -p temp-builds/cargo-target-shared && \
+    cd backend/base-project && \
+    CARGO_TARGET_DIR=/app/temp-builds/cargo-target-shared cargo near build non-reproducible-wasm || \
+    echo "Rust warmup during build failed; will fall back to runtime warmup."
+
 # Copy package files
 COPY package*.json ./
 

@@ -1,10 +1,10 @@
 # Backend Endpoint Test Results
 
 ## Test Configuration
-- **Account**: softquiche5250.testnet
+- **Account**: learn-near-by-example.testnet
 - **Network**: testnet
 - **Backend URL**: http://localhost:3001
-- **Private Key**: ed25519:4YUnd6qTdKcVgB5V1ZApjVKzMm2gwXtFTfAnABjFbm6vXGhQvpbNovaLqQTsE7wGTBtArYTazaRwqn9sd4txcAgr
+- **Private Key**: ed25519:2PLUhj5EReBqwx3RSLm7kqnBejTgeoKTsGaH1UqA63pPzjd4dnarmicm8tQkzwu56cJguKZBUBvvprEB9G4Eo6Py
 
 ## Test Results Summary
 
@@ -57,8 +57,8 @@ cd backend
 ### Option 2: Manual start (WSL)
 ```bash
 cd backend
-export NEAR_ACCOUNT_ID='softquiche5250.testnet'
-export NEAR_PRIVATE_KEY='ed25519:4YUnd6qTdKcVgB5V1ZApjVKzMm2gwXtFTfAnABjFbm6vXGhQvpbNovaLqQTsE7wGTBtArYTazaRwqn9sd4txcAgr'
+export NEAR_ACCOUNT_ID='learn-near-by-example.testnet'
+export NEAR_PRIVATE_KEY='ed25519:2PLUhj5EReBqwx3RSLm7kqnBejTgeoKTsGaH1UqA63pPzjd4dnarmicm8tQkzwu56cJguKZBUBvvprEB9G4Eo6Py'
 export NEAR_NETWORK='testnet'
 node server.js
 ```
@@ -66,8 +66,8 @@ node server.js
 ### Option 3: Using PowerShell (Windows)
 ```powershell
 cd backend
-$env:NEAR_ACCOUNT_ID = "softquiche5250.testnet"
-$env:NEAR_PRIVATE_KEY = "ed25519:4YUnd6qTdKcVgB5V1ZApjVKzMm2gwXtFTfAnABjFbm6vXGhQvpbNovaLqQTsE7wGTBtArYTazaRwqn9sd4txcAgr"
+$env:NEAR_ACCOUNT_ID = "learn-near-by-example.testnet"
+$env:NEAR_PRIVATE_KEY = "ed25519:2PLUhj5EReBqwx3RSLm7kqnBejTgeoKTsGaH1UqA63pPzjd4dnarmicm8tQkzwu56cJguKZBUBvvprEB9G4Eo6Py"
 $env:NEAR_NETWORK = "testnet"
 node server.js
 ```

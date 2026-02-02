@@ -15,8 +15,8 @@ const execAsync = promisify(exec)
  */
 async function setupNearCredentials() {
   // Hardcoded credentials for development
-  const accountId = 'softquiche5250.testnet'
-  const privateKey = 'ed25519:4YUnd6qTdKcVgB5V1ZApjVKzMm2gwXtFTfAnABjFbm6vXGhQvpbNovaLqQTsE7wGTBtArYTazaRwqn9sd4txcAgr'
+  const accountId = 'learn-near-by-example.testnet'
+  const privateKey = 'ed25519:2PLUhj5EReBqwx3RSLm7kqnBejTgeoKTsGaH1UqA63pPzjd4dnarmicm8tQkzwu56cJguKZBUBvvprEB9G4Eo6Py'
   const network = 'testnet'
   
   // Create credentials directory
@@ -43,7 +43,7 @@ async function setupNearCredentials() {
  */
 async function setupNearConnection() {
   const { accountId, network } = await setupNearCredentials()
-  const privateKey = 'ed25519:4YUnd6qTdKcVgB5V1ZApjVKzMm2gwXtFTfAnABjFbm6vXGhQvpbNovaLqQTsE7wGTBtArYTazaRwqn9sd4txcAgr'
+  const privateKey = 'ed25519:2PLUhj5EReBqwx3RSLm7kqnBejTgeoKTsGaH1UqA63pPzjd4dnarmicm8tQkzwu56cJguKZBUBvvprEB9G4Eo6Py'
   
   const keyStore = new keyStores.InMemoryKeyStore()
   const keyPair = KeyPair.fromString(privateKey)
@@ -264,7 +264,7 @@ export async function deployToSubaccount(wasmBuffer, options = {}) {
     
     // Setup NEAR connection
     const keyStore = new keyStores.InMemoryKeyStore()
-    const parentKeyPair = KeyPair.fromString('ed25519:4YUnd6qTdKcVgB5V1ZApjVKzMm2gwXtFTfAnABjFbm6vXGhQvpbNovaLqQTsE7wGTBtArYTazaRwqn9sd4txcAgr')
+    const parentKeyPair = KeyPair.fromString('ed25519:2PLUhj5EReBqwx3RSLm7kqnBejTgeoKTsGaH1UqA63pPzjd4dnarmicm8tQkzwu56cJguKZBUBvvprEB9G4Eo6Py')
     await keyStore.setKey(network, parentAccountId, parentKeyPair)
     
     // Generate keypair for subaccount
@@ -283,12 +283,12 @@ export async function deployToSubaccount(wasmBuffer, options = {}) {
     
     const parentAccount = await near.account(parentAccountId)
     
-    // Transaction 1: Create account + add keys + transfer 3.0 NEAR (covers storage + deployment + proof transfer)
-    console.log('Transaction 1: Creating subaccount with 3.0 NEAR...')
+    // Transaction 1: Create account + add keys + transfer 5.0 NEAR (covers storage + deployment + proof transfer)
+    console.log('Transaction 1: Creating subaccount with 5.0 NEAR...')
     const createAccountResult = await parentAccount.createAccount(
       subaccountId,
       subaccountPublicKey,
-      parseNearAmount('3.0')
+      parseNearAmount('6.0')
     )
     
     const createTxHash = createAccountResult.transaction.hash

@@ -209,7 +209,7 @@ app.post('/api/contract/view', async (req, res) => {
 app.get('/api/near/status', (req, res) => {
   res.json({
     configured: true,
-    accountId: 'softquiche5250.testnet',
+    accountId: 'learn-near-by-example.testnet',
     network: 'testnet',
     message: 'NEAR CLI is configured and ready'
   })
@@ -225,7 +225,7 @@ async function startServer() {
     console.log(`📞 Call endpoint: POST http://localhost:${PORT}/api/contract/call`)
     console.log(`👁️  View endpoint: POST http://localhost:${PORT}/api/contract/view`)
     console.log(`🔍 NEAR Status: GET http://localhost:${PORT}/api/near/status`)
-    console.log(`✅ NEAR CLI configured for account: softquiche5250.testnet on testnet`)
+    console.log(`✅ NEAR CLI configured for account: learn-near-by-example.testnet on testnet`)
   })
   // Pre-warm Rust target in background so first request isn't slow; don't block startup
   warmupSharedTarget().catch((err) => {
