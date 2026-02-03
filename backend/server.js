@@ -2,7 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
-import { buildContract, initializeTemplate } from './build-contract-optimized.js'
+import { buildContract, initializeTemplate, preWarmBuildPool } from './build-contract-optimized.js'
 import { buildRustContract } from './build-rust-contract.js'
 import { deployContract, callContract, viewContract, areCredentialsConfigured } from './deploy-contract.js'
 
@@ -254,6 +254,8 @@ app.listen(PORT, '0.0.0.0', async () => {
     console.log('📦 Initializing contract template (this happens once)...')
     await initializeTemplate()
     console.log('✅ Contract template initialized successfully')
+    // Pre-warm build pool so first compiles are faster
+    await preWarmBuildPool()
   } catch (error) {
     if (error.message.includes('Windows') || error.message.includes('not supported')) {
       console.warn(`⚠️  JavaScript/TypeScript compilation not available on Windows`)

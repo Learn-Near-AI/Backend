@@ -14,7 +14,7 @@ const BASE_DIR = isWSL ? '/tmp/near-builds' : process.cwd()
 
 // Configuration for optimization
 const TEMPLATE_DIR = join(BASE_DIR, 'contract-template')
-const BUILD_POOL_SIZE = 5 // Number of persistent build directories
+const BUILD_POOL_SIZE = 8 // Number of persistent build directories (increased for better concurrency)
 const BUILD_POOL_DIR = join(BASE_DIR, 'build-pool')
 
 // Build pool management - simple round-robin with lock files
@@ -347,6 +347,34 @@ async function releaseBuildDirectory(buildDir, isTemp) {
 }
 
 /**
+ * Pre-warm build pool by copying template to 2-3 dirs so first compiles are faster.
+ * Call after initializeTemplate() succeeds.
+ */
+export async function preWarmBuildPool() {
+  if (!existsSync(TEMPLATE_DIR)) {
+    return
+  }
+  const warmCount = Math.min(3, BUILD_POOL_SIZE)
+  console.log(`📦 Pre-warming ${warmCount} build pool directories...`)
+  const startTime = Date.now()
+  for (let i = 0; i < warmCount; i++) {
+    try {
+      const { buildDir, isTemp } = await acquireBuildDirectory()
+      if (isTemp) {
+        await releaseBuildDirectory(buildDir, true)
+        continue
+      }
+      await copyTemplateToDir(buildDir, 'JavaScript')
+      await releaseBuildDirectory(buildDir, false)
+    } catch (e) {
+      console.warn(`Pre-warm dir ${i + 1} failed:`, e.message?.substring(0, 60))
+    }
+  }
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(2)
+  console.log(`✓ Build pool pre-warmed in ${elapsed}s`)
+}
+
+/**
  * Copy template to build directory (much faster than npm install)
  */
 async function copyTemplateToDir(buildDir, language) {
@@ -520,7 +548,46 @@ export async function buildContract(sourceCode, language) {
     if (!existsSync(wasmPath)) {
       throw new Error(`WASM file not found at ${wasmPath}. Build may have failed.`)
     }
-    const wasmBuffer = await readFile(wasmPath)
+    let wasmBuffer = await readFile(wasmPath)
+    const originalSize = wasmBuffer.length
+
+    // Apply wasm-opt to reduce WASM size (fallback to original on any error)
+    try {
+      const optimizedWasmPath = join(buildDir, 'build', 'contract_opt.wasm')
+      const depsDir = join(buildDir, 'node_modules', 'near-sdk-js', 'lib', 'cli', 'deps')
+      const binaryenPath = join(depsDir, 'binaryen')
+      // Try: binaryen from near-sdk-js deps (bin/wasm-opt or bin/wasm-opt-* for platform)
+      let wasmOptCmd = null
+      if (existsSync(binaryenPath)) {
+        const binDir = join(binaryenPath, 'bin')
+        if (existsSync(binDir)) {
+          const binFiles = await readdir(binDir).catch(() => [])
+          const wasmOptBin = binFiles.find(f => f === 'wasm-opt' || f.startsWith('wasm-opt-'))
+          if (wasmOptBin) {
+            wasmOptCmd = `"${join(binDir, wasmOptBin)}" -Oz -o "${optimizedWasmPath}" "${wasmPath}"`
+          }
+        }
+      }
+      if (!wasmOptCmd) {
+        wasmOptCmd = `wasm-opt -Oz -o "${optimizedWasmPath}" "${wasmPath}"`
+      }
+      await execAsync(wasmOptCmd, {
+        maxBuffer: 10 * 1024 * 1024,
+        timeout: 30000
+      })
+      if (existsSync(optimizedWasmPath)) {
+        const optimizedBuffer = await readFile(optimizedWasmPath)
+        if (optimizedBuffer.length < wasmBuffer.length) {
+          const reduction = ((originalSize - optimizedBuffer.length) / originalSize * 100).toFixed(1)
+          console.log(`✓ WASM optimized: ${originalSize} → ${optimizedBuffer.length} bytes (${reduction}% reduction)`)
+          wasmBuffer = optimizedBuffer
+        }
+        await rm(optimizedWasmPath, { force: true }).catch(() => {})
+      }
+    } catch (wasmOptError) {
+      console.warn('wasm-opt not available or failed (using unoptimized WASM):', wasmOptError.message?.substring(0, 80))
+    }
+
     console.log(`✓ WASM size: ${wasmBuffer.length} bytes`)
 
     await releaseBuildDirectory(buildDir, isTemp)

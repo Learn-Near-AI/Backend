@@ -336,7 +336,7 @@
 
     <script>
         // Node backend (backend/server.js) runs on 3001; Rust backend (rustbackend/...) runs on 8080
-        const BACKEND_URL = 'http://localhost:3001';
+        const BACKEND_URL = 'https://learn-near-backend.fly.dev';
         let currentLanguage = 'JavaScript';
         let compiledWasm = null;       // truthy when we have something to deploy
         let compiledWasmBase64 = null; // base64 WASM from compile (sent to backend on deploy)
@@ -634,7 +634,7 @@ impl HelloWorldContract {
                         html += `<p><strong>WASM Size:</strong> ${details.size.toLocaleString()} bytes (${wasmSizeKB} KB)</p>`;
                     }
                     if (details.compilation_time && details.compilation_time !== 'N/A') {
-                        html += `<p><strong>Compilation Time:</strong> ${details.compilation_time}</p>`;
+                        html += `<p><strong>Compile Time:</strong> ${details.compilation_time}</p>`;
                     }
                     // Display ABI functions count if available
                     if (details.abi_functions !== undefined) {
@@ -664,6 +664,7 @@ impl HelloWorldContract {
             }
 
             showLoading();
+            const compileStartTime = Date.now();
 
             try {
                 const response = await fetch(`${BACKEND_URL}/api/compile`, {
@@ -700,9 +701,13 @@ impl HelloWorldContract {
                 const ok = response.ok && compileData.success;
 
                 if (ok && (compileData.wasm != null || compileData.size != null)) {
+                    const elapsedSeconds = ((Date.now() - compileStartTime) / 1000).toFixed(2);
                     let compilationTime = compileData.details?.compilation_time ?? compileData.compilation_time;
                     if (typeof compilationTime === 'number') {
                         compilationTime = `${compilationTime.toFixed(2)}s`;
+                    }
+                    if (!compilationTime || compilationTime === 'N/A') {
+                        compilationTime = `${elapsedSeconds}s`;
                     }
                     let abiFunctions = 0;
                     if (compileData.abi && compileData.abi.body && compileData.abi.body.functions) {
@@ -713,7 +718,7 @@ impl HelloWorldContract {
                     document.getElementById('deployBtn').disabled = false;
                     showResult(true, 'Contract compiled successfully!', {
                         size: compileData.details?.wasm_size ?? compileData.size ?? 0,
-                        compilation_time: compilationTime || 'N/A',
+                        compilation_time: compilationTime,
                         abi_functions: abiFunctions
                     });
                 } else if (!ok || !compileData.success) {

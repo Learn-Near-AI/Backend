@@ -1,9 +1,9 @@
 # Use a base image with both Node.js and Rust (using Rust 1.85+ for near-sdk 5.24.0 support)
 FROM rust:1.85-slim AS rust-base
 
-# Install curl and other dependencies, then Node.js 20
+# Install curl, binaryen (wasm-opt for JS WASM optimization), and other dependencies
 RUN apt-get update && \
-    apt-get install -y curl ca-certificates gnupg procps && \
+    apt-get install -y curl ca-certificates gnupg procps binaryen && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
     apt-get clean && \
