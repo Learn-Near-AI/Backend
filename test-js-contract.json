@@ -1,4 +1,0 @@
-{
-  "code": "import { NearBindgen, near, call, view } from 'near-sdk-js';\n\n@NearBindgen({})\nexport class HelloContract {\n  @view({})\n  hello() {\n    return 'Hello from WSL!';\n  }\n}",
-  "language": "JavaScript"
-}

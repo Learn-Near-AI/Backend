@@ -1,0 +1,434 @@
+openapi: 3.0.3
+info:
+  title: NEAR-by-Example Backend API
+  description: |
+    Backend service for compiling Rust NEAR smart contracts and deploying them to NEAR TestNet.
+    Provides REST API endpoints for compile, deploy, and contract interaction.
+  version: 1.0.0
+
+servers:
+  - url: /api
+    description: API base path
+
+tags:
+  - name: Health
+    description: Health and status checks
+  - name: Compile
+    description: Rust contract compilation
+  - name: Deploy
+    description: Contract deployment
+  - name: Contract
+    description: Contract interaction (call/view)
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /near/status:
+    get:
+      tags: [Health]
+      summary: NEAR configuration status
+      operationId: getNearStatus
+      responses:
+        '200':
+          description: NEAR status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  configured:
+                    type: boolean
+                    description: Whether NEAR credentials are configured
+                  accountId:
+                    type: string
+                    nullable: true
+                    example: your-account.testnet
+                  network:
+                    type: string
+                    example: testnet
+                  message:
+                    type: string
+
+  /compile:
+    post:
+      tags: [Compile]
+      summary: Compile Rust contract to WASM
+      operationId: compileContract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, language]
+              properties:
+                code:
+                  type: string
+                  description: Rust source code
+                language:
+                  type: string
+                  enum: [Rust]
+                  description: Only Rust is supported
+                projectId:
+                  type: string
+                  maxLength: 128
+                  description: Optional project identifier
+      responses:
+        '200':
+          description: Compilation successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  wasm:
+                    type: string
+                    format: byte
+                    description: Base64-encoded WASM
+                  size:
+                    type: integer
+                    description: WASM size in bytes
+                  abi:
+                    type: object
+                    nullable: true
+                  compilation_time:
+                    type: number
+                    description: Compilation time in seconds
+                  details:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: success
+                      wasm_size:
+                        type: integer
+                      optimized:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          description: Compilation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompileError'
+
+  /deploy:
+    post:
+      tags: [Deploy]
+      summary: Deploy WASM contract to NEAR
+      operationId: deploy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [wasmBase64]
+              properties:
+                wasmBase64:
+                  type: string
+                  description: Base64-encoded WASM binary
+                contractAccountId:
+                  type: string
+                  maxLength: 64
+                  description: Target account (defaults to configured account)
+                initMethod:
+                  type: string
+                  default: new
+                  maxLength: 64
+                initArgs:
+                  type: object
+                  default: {}
+                useSubaccount:
+                  type: boolean
+                  default: false
+                  description: Create subaccount for deployment
+                userId:
+                  type: string
+                  maxLength: 128
+                  description: Used when useSubaccount is true
+                projectId:
+                  type: string
+                  maxLength: 128
+                  description: Used when useSubaccount is true
+      responses:
+        '200':
+          description: Deployment successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  contractId:
+                    type: string
+                  contractAccountId:
+                    type: string
+                  accountId:
+                    type: string
+                  transactionHash:
+                    type: string
+                  network:
+                    type: string
+                  wasmSize:
+                    type: integer
+                  deploymentTime:
+                    type: number
+                  explorerUrl:
+                    type: string
+                    format: uri
+                    nullable: true
+                  accountUrl:
+                    type: string
+                    format: uri
+                  initialized:
+                    type: boolean
+                  initError:
+                    type: string
+                    nullable: true
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          description: Deployment failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                  deploymentTime:
+                    type: number
+                    nullable: true
+                  subaccountId:
+                    type: string
+                    nullable: true
+
+  /contract/call:
+    post:
+      tags: [Contract]
+      summary: Call contract change method
+      operationId: callContract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contractAccountId, methodName]
+              properties:
+                contractAccountId:
+                  type: string
+                  maxLength: 64
+                methodName:
+                  type: string
+                  maxLength: 64
+                args:
+                  type: object
+                  default: {}
+                accountId:
+                  type: string
+                  maxLength: 64
+                  description: Caller account (defaults to configured account)
+                deposit:
+                  type: string
+                  description: NEAR amount to attach
+                gas:
+                  type: string
+                  description: Gas limit
+      responses:
+        '200':
+          description: Call successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  result:
+                    type: object
+                  transactionHash:
+                    type: string
+                  explorerUrl:
+                    type: string
+                    format: uri
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /contract/view:
+    post:
+      tags: [Contract]
+      summary: Call contract view method (read-only)
+      operationId: viewContract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contractAccountId, methodName]
+              properties:
+                contractAccountId:
+                  type: string
+                  maxLength: 64
+                methodName:
+                  type: string
+                  maxLength: 64
+                args:
+                  type: object
+                  default: {}
+      responses:
+        '200':
+          description: View successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  result:
+                    type: object
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+        requestId:
+          type: string
+          description: Request ID for tracing (also in X-Request-Id header)
+
+    CompileError:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        exit_code:
+          type: integer
+        stdout:
+          type: string
+        stderr:
+          type: string
+        wasm:
+          type: object
+          nullable: true
+        size:
+          type: integer
+          example: 0
+        abi:
+          type: object
+          nullable: true
+        compilation_time:
+          type: number
+        error:
+          type: string
+        details:
+          type: object
+          properties:
+            status:
+              type: string
+              example: failed
+            compilation_time:
+              type: number
+            project_path:
+              type: string
+              nullable: true
+            wasm_size:
+              type: integer
+            optimized:
+              type: boolean
+
+  responses:
+    ValidationError:
+      description: Invalid request body
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: VALIDATION_ERROR
+              message: Missing or invalid "code" field (must be a non-empty string)
+            requestId: uuid
+    RateLimitError:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: RATE_LIMIT_EXCEEDED
+              message: Too many requests
+            requestId: uuid
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

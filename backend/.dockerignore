@@ -35,10 +35,13 @@ test-output/
 *.md
 !README.md
 
-# Test scripts
+# Test scripts (run on host, not needed in container)
 test-*.ps1
 test-*.sh
 test-*.js
 
 # Temporary files
 backend.pid
+
+# Stray directories
+~/

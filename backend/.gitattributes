@@ -1,0 +1,4 @@
+# Ensure LF line endings for shell scripts and env files (WSL/Linux compatibility)
+*.sh text eol=lf
+.env text eol=lf
+.env.example text eol=lf
