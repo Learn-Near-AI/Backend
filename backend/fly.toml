@@ -11,8 +11,8 @@ primary_region = 'iad'
   NODE_ENV = 'production'
   PORT = '3001'
   NEAR_NETWORK = 'testnet'
-  # Limit Node.js memory to leave room for clang
-  NODE_OPTIONS = '--max-old-space-size=1024'
+  # Increased Node memory to reduce swap during JS compilation (clang + copy)
+  NODE_OPTIONS = '--max-old-space-size=2048'
 
 # Persistent storage for compiled contract cache
 [mounts]
@@ -42,8 +42,9 @@ primary_region = 'iad'
     method = 'GET'
     path = '/api/health'
 
-# Increased VM resources for clang compilation with LTO
+# Dedicated CPU for consistent compile performance (avoids shared-CPU throttling)
 [[vm]]
-  size = 'shared-cpu-4x'
-  memory = '4gb'
+  size = 'performance-4x'
+  memory = '8gb'
   cpus = 4
+  cpu_kind = 'performance'

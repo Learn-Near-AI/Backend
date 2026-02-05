@@ -1,0 +1,4 @@
+node_modules/
+persistent-builds-js/
+temp-builds/
+*.lock

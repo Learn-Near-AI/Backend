@@ -14,25 +14,14 @@ persistent-builds-js/
 persistent-builds/
 temp-builds/
 target/
-shared-target/
 build/
 dist/
 out/
 *.wasm
 
-# Jsroute test/dev folder
-Jsroute/
-
 # Strange/accidental directories
 ~
 ~*
-
-# ============================================
-# Rust build artifacts
-# ============================================
-**/target/
-**/*.rs.bk
-# Note: Keep Cargo.lock in base-project for reproducible builds
 
 # ============================================
 # NEAR artifacts
@@ -154,11 +143,6 @@ heroku.yml
 Procfile
 app.yaml
 *.deploy.json
-
-# ============================================
-# Development/debugging scripts
-# ============================================
-build-contract-original.js
 
 # ============================================
 # Temporary and cache files

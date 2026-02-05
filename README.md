@@ -1,133 +1,175 @@
-# NEAR by Example
+# NEAR Contract Compiler Backend
 
-An interactive learning platform that teaches NEAR smart contract development through live, executable code examples with AI assistance.
+Express server for compiling and deploying NEAR smart contracts (JavaScript/TypeScript).
 
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Node.js 18+ and npm/yarn/pnpm
-- NEAR Wallet (MyNearWallet - https://testnet.mynearwallet.com/)
-
-### Installation
-
-#### Frontend Setup
+## Setup
 
 ```bash
-# Install frontend dependencies
 npm install
-
-# Start frontend development server (port 5173)
-npm run dev
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
+cp .env.example .env
+# Edit .env with your NEAR credentials (for deploy/call/view)
 ```
 
-#### Backend Setup
+**Windows:** Use `npm install --ignore-scripts` to avoid near-sdk-js post-install failures. JS/TS compilation requires Linux/Mac or Fly.io deployment.
+
+## Running
 
 ```bash
-# Navigate to backend directory
-cd backend
-
-# Install backend dependencies
-npm install
-
-# Start backend server (port 3001)
-npm run dev
-# or
-npm start
+npm run dev    # Development
+npm start      # Production
 ```
 
-#### Running Both Separately
+Server runs on `http://localhost:3001` (or `PORT` env var).
 
-Open two terminal windows:
+## Development
 
-**Terminal 1 - Frontend:**
 ```bash
-npm run dev
+npm test           # Run tests
+npm run lint       # Lint
+npm run lint:fix   # Fix lint issues
+npm run format     # Format with Prettier
+npm run format:check
 ```
 
-**Terminal 2 - Backend:**
-```bash
-cd backend
-npm run dev
-```
-
-### Environment Setup
-
-Create a `.env` file (optional, defaults are fine for local dev):
-
-```env
-VITE_API_URL=http://localhost:3001
-```
-
-## 🛠️ Tech Stack
-
-### Frontend
-- **Vite** - Fast build tool and dev server
-- **React 18** - UI framework
-- **Tailwind CSS** - Utility-first CSS framework
-- **Lucide React** - Beautiful icon library
-- **NEAR Wallet Selector** - Wallet integration (MyNearWallet)
-
-### Backend
-- **Express** - Node.js web server
-- **near-sdk-js** - NEAR JavaScript/TypeScript SDK
-- **esbuild** - Fast JavaScript bundler
-- **TypeScript** - Type-safe JavaScript
-
-## 📁 Project Structure
+## Project Structure
 
 ```
+backend/
 ├── src/
-│   ├── components/      # React components
-│   │   ├── ExampleDetail.jsx  # Code editor & execution
-│   │   └── ...
-│   ├── near/            # NEAR wallet integration
-│   │   └── near.js      # Wallet Selector setup
-│   ├── data/            # Example data
-│   ├── App.jsx          # Main app component
-│   └── main.jsx         # React entry point
-├── backend/
-│   ├── server.js        # Express backend server
-│   ├── build-contract.js# Contract compilation utility
-│   └── package.json     # Backend dependencies and scripts
-├── index.html           # HTML template
-├── vite.config.js       # Vite configuration
-└── package.json         # Frontend dependencies and scripts
+│   ├── config/         # Configuration
+│   ├── middleware/     # Validation, error handling, rate limiting, logging
+│   ├── routes/        # API route handlers
+│   ├── services/      # Business logic (compile, deploy)
+│   ├── utils/         # Logger
+│   └── app.js         # Express app
+├── build-contract-optimized.js   # JS/TS compilation
+├── deploy-contract.js            # NEAR CLI deployment
+├── server.js                     # Entry point
+├── tests/
+├── docs/
+│   └── openapi.yaml   # API specification
+└── package.json
 ```
 
-## 🎨 Features
+## API Reference
 
-- **Interactive Code Editor** - Edit TypeScript/JavaScript contracts in-browser
-- **Compile & Deploy** - Compile contracts and deploy to NEAR TestNet
-- **Run Contracts** - Execute contract methods and view results
-- **Wallet Integration** - Connect with MyNearWallet (https://testnet.mynearwallet.com/)
-- **60+ Examples** - Categorized by difficulty and topic
-- **AI Assistant** - Get help understanding code (UI ready)
+All endpoints under `/api/`:
 
-## 🔧 Compile & Deploy
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Health check (status, version, environment) |
+| GET | `/api/health/live` | Liveness probe |
+| GET | `/api/health/ready` | Readiness probe |
+| POST | `/api/compile` | Compile contract (rate limited: 20/min) |
+| POST | `/api/deploy` | Deploy contract (rate limited: 10/min) |
+| POST | `/api/contract/call` | Call contract method |
+| POST | `/api/contract/view` | View contract method |
+| GET | `/api/near/status` | NEAR credentials status |
 
-The platform includes a backend server that compiles TypeScript/JavaScript contracts:
+### Compile
 
-1. **Write Code** - Edit contract code in the editor
-2. **Click Run** - Compiles contract and shows results
-3. **Click Deploy** - Compiles and deploys to TestNet (requires wallet connection)
+**POST /api/compile**
 
-**Note:** Full WASM compilation requires `near-sdk-js` CLI. The current setup provides a foundation - full production deployment integration is in progress.
+```json
+{ "code": "string", "language": "JavaScript" | "TypeScript", "projectId": "optional" }
+```
 
-## 🎯 Next Steps
+Returns: `{ success, wasm, size }`
 
-- Complete full WASM compilation pipeline
-- Add contract method execution
-- Integrate AI assistant API
-- Add Rust contract compilation support
+### Deploy
 
-## 📝 License
+**POST /api/deploy**
 
-MIT License - See LICENSE file for details
+```json
+{ "wasmBase64": "string", "contractAccountId": "optional", "initMethod": "optional", "initArgs": {} }
+```
 
+### Contract Call/View
+
+**POST /api/contract/call** – `{ contractAccountId, methodName, args?, accountId?, deposit?, gas? }`
+
+**POST /api/contract/view** – `{ contractAccountId, methodName, args? }`
+
+### Error Response Format
+
+```json
+{ "error": "message", "code": "ERROR_CODE", "details": [] }
+```
+
+Codes: `VALIDATION_ERROR`, `COMPILATION_FAILED`, `RATE_LIMIT_EXCEEDED`, `SERVICE_UNAVAILABLE`, `NOT_FOUND`, `INTERNAL_ERROR`
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| PORT | 3001 | Server port |
+| NODE_ENV | development | Environment |
+| CORS_ORIGIN | * | Allowed origins (comma-separated) |
+| NEAR_ACCOUNT_ID | - | NEAR account (required for deploy) |
+| NEAR_PRIVATE_KEY | - | Private key (ed25519:...) |
+| NEAR_NETWORK | testnet | testnet or mainnet |
+| RATE_LIMIT_MAX | 100 | General requests per window |
+| RATE_LIMIT_COMPILE_MAX | 20 | Compile requests per window |
+| RATE_LIMIT_DEPLOY_MAX | 10 | Deploy requests per window |
+| LOG_LEVEL | info | debug, info, warn, error |
+
+---
+
+## Contributing
+
+### How to Contribute
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing`)
+3. Make changes, add tests
+4. Run `npm test` and `npm run lint`
+5. Commit with clear messages
+6. Push and open a Pull Request
+
+### PR Process
+
+- Ensure all tests pass
+- Update README if adding/changing API
+- Keep PRs focused and reasonably sized
+
+### Setup for Development
+
+```bash
+git clone <repo>
+cd backend
+npm install --ignore-scripts  # On Windows
+npm test
+```
+
+---
+
+## Code of Conduct
+
+### Our Pledge
+
+We are committed to providing a welcoming and harassment-free experience for everyone. We expect participants to:
+
+- Be respectful and inclusive
+- Accept constructive criticism gracefully
+- Focus on what is best for the community
+
+### Unacceptable Behavior
+
+Harassment, trolling, discriminatory language, or personal attacks are not tolerated.
+
+### Enforcement
+
+Violations may result in temporary or permanent ban from the project. Report issues to the maintainers.
+
+---
+
+## Changelog
+
+### [1.0.0] - 2025-02-05
+
+- Initial release
+- Compile JavaScript/TypeScript NEAR contracts
+- Deploy, call, view contracts via NEAR CLI
+- Rate limiting, structured logging, error handling
+- Health endpoints (live, ready)
+- OpenAPI documentation

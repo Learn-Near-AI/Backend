@@ -335,7 +335,7 @@
     </div>
 
     <script>
-        const BACKEND_URL = 'http://localhost:8080';
+        const BACKEND_URL = 'http://localhost:3001';
         let currentLanguage = 'JavaScript';
         let compiledWasm = null;
         let currentUserId = 'user_' + Math.random().toString(36).substr(2, 9);
@@ -631,8 +631,8 @@ impl HelloWorldContract {
                         const wasmSizeKB = (details.size / 1024).toFixed(2);
                         html += `<p><strong>WASM Size:</strong> ${details.size.toLocaleString()} bytes (${wasmSizeKB} KB)</p>`;
                     }
-                    if (details.compilation_time && details.compilation_time !== 'N/A') {
-                        html += `<p><strong>Compilation Time:</strong> ${details.compilation_time}</p>`;
+                    if (details.compilation_time) {
+                        html += `<p><strong>Compile time:</strong> ${details.compilation_time}</p>`;
                     }
                     // Display ABI functions count if available
                     if (details.abi_functions !== undefined) {
@@ -661,42 +661,35 @@ impl HelloWorldContract {
                 return;
             }
 
-            // Warn if trying to compile JavaScript (backend only supports Rust)
-            if (currentLanguage === 'JavaScript') {
-                showResult(false, 'JavaScript contracts are not supported. Please select Rust and use Rust contract syntax.');
-                return;
-            }
-
             showLoading();
+            const compileStartTime = performance.now();
 
             try {
-                const response = await fetch(`${BACKEND_URL}/compile`, {
+                const response = await fetch(`${BACKEND_URL}/api/compile`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        user_id: currentUserId,
-                        project_id: currentProjectId,
-                        code: code
+                        code: code,
+                        language: currentLanguage,
+                        projectId: currentProjectId
                     })
                 });
 
                 const data = await response.json();
+                const compileElapsedMs = performance.now() - compileStartTime;
 
                 hideLoading();
 
-                if (response.ok && data.success && data.data) {
-                    const compileData = data.data;
-                    
-                    // Check if compilation was actually successful
-                    if (compileData.success) {
-                        let compilationTime = compileData.details?.compilation_time;
-                        if (typeof compilationTime === 'number') {
-                            compilationTime = `${compilationTime.toFixed(2)}s`;
-                        }
+                const compileData = data.data || data;
+                if (response.ok && data.success) {
+                    // Check if compilation was actually successful (Rust may return success: false with stderr)
+                    if (compileData.success !== false) {
+                        // Use client-side elapsed time (includes network + backend compile)
+                        const compilationTime = `${(compileElapsedMs / 1000).toFixed(2)}s`;
                         
-                        // Count ABI functions if available
+                        // Count ABI functions if available (Rust only)
                         let abiFunctions = 0;
                         if (compileData.abi && compileData.abi.body && compileData.abi.body.functions) {
                             abiFunctions = compileData.abi.body.functions.length;
@@ -707,12 +700,12 @@ impl HelloWorldContract {
                         document.getElementById('deployBtn').disabled = false;
                         
                         showResult(true, 'Contract compiled successfully!', {
-                            size: compileData.details?.wasm_size || 0,
-                            compilation_time: compilationTime || 'N/A',
+                            size: compileData.details?.wasm_size ?? compileData.size ?? 0,
+                            compilation_time: compilationTime,
                             abi_functions: abiFunctions
                         });
                     } else {
-                        // Compilation failed even though API call succeeded
+                        // Compilation failed even though API call succeeded (Rust)
                         const errorMessage = compileData.stderr || compileData.stdout || 'Compilation failed';
                         compiledWasm = null;
                         document.getElementById('deployBtn').disabled = true;
@@ -721,7 +714,7 @@ impl HelloWorldContract {
                         });
                     }
                 } else {
-                    const errorMessage = data.data?.stderr || data.error?.details || data.error?.message || data.message || 'Unknown error';
+                    const errorMessage = compileData?.stderr || data.error?.details || data.error?.message || data.message || 'Unknown error';
                     compiledWasm = null;
                     document.getElementById('deployBtn').disabled = true;
                     showResult(false, 'Compilation failed', {

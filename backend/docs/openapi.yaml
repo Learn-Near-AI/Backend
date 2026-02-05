@@ -1,0 +1,140 @@
+openapi: 3.0.3
+info:
+  title: NEAR Contract Compiler API
+  description: Backend API for compiling and deploying NEAR smart contracts
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3001
+    description: Local development
+
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  version: { type: string }
+                  environment: { type: string }
+
+  /api/compile:
+    post:
+      summary: Compile a contract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, language]
+              properties:
+                code: { type: string }
+                language: { type: string, enum: [JavaScript, TypeScript] }
+                projectId: { type: string }
+      responses:
+        '200':
+          description: Compilation successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  wasm: { type: string, description: base64 }
+                  size: { type: integer }
+        '400':
+          description: Validation failed
+        '429':
+          description: Rate limit exceeded
+        '500':
+          description: Compilation failed
+
+  /api/deploy:
+    post:
+      summary: Deploy a compiled contract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [wasmBase64]
+              properties:
+                wasmBase64: { type: string }
+                contractAccountId: { type: string }
+                initMethod: { type: string, default: new }
+                initArgs: { type: object }
+      responses:
+        '200':
+          description: Deployment successful
+        '400':
+          description: Validation failed
+        '429':
+          description: Rate limit exceeded
+        '503':
+          description: NEAR credentials not configured
+        '500':
+          description: Deployment failed
+
+  /api/contract/call:
+    post:
+      summary: Call a contract method (state-changing)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contractAccountId, methodName]
+              properties:
+                contractAccountId: { type: string }
+                methodName: { type: string }
+                args: { type: object }
+                accountId: { type: string }
+                deposit: { type: string }
+                gas: { type: string }
+      responses:
+        '200':
+          description: Call successful
+        '400':
+          description: Validation failed
+        '503':
+          description: NEAR credentials not configured
+        '500':
+          description: Call failed
+
+  /api/contract/view:
+    post:
+      summary: View a contract method (read-only)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contractAccountId, methodName]
+              properties:
+                contractAccountId: { type: string }
+                methodName: { type: string }
+                args: { type: object }
+      responses:
+        '200':
+          description: View successful
+        '400':
+          description: Validation failed
+        '503':
+          description: NEAR credentials not configured
+        '500':
+          description: View failed
+
+  /api/near/status:
+    get:
+      summary: Check NEAR CLI configuration status
+      responses:
+        '200':
+          description: Status of NEAR credentials

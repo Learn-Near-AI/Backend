@@ -1,3 +1,6 @@
+# Frontend (excluded from repo)
+frontend/
+
 # Logs
 logs
 *.log
@@ -26,6 +29,7 @@ dist-ssr
 # Build artifacts
 temp-builds/
 persistent-builds/
+persistent-builds-js/
 shared-target/
 *.wasm
 out/
@@ -33,9 +37,6 @@ out/
 # Rust build artifacts
 **/target/
 **/*.rs.bk
-**/Cargo.lock
-# Keep Cargo.lock for base-project (it's a binary/application)
-!backend/base-project/Cargo.lock
 
 # Environment variables
 .env

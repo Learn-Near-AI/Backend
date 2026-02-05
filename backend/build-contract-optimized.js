@@ -9,8 +9,14 @@ const execAsync = promisify(exec)
 
 // Detect if running in WSL (Windows mount path)
 const isWSL = platform() === 'linux' && process.cwd().startsWith('/mnt/')
-// Use WSL-native temp directory to avoid permission issues with Windows mounts
-const BASE_DIR = isWSL ? '/tmp/near-builds' : process.cwd()
+// On Fly.io, use persistent volume for faster I/O and template persistence across restarts
+const isFly = !!process.env.FLY_APP_NAME
+const PERSISTENT_BUILDS = '/app/persistent-builds'
+const BASE_DIR = isFly && existsSync(PERSISTENT_BUILDS)
+  ? join(PERSISTENT_BUILDS, 'near-builds')
+  : isWSL
+    ? '/tmp/near-builds'
+    : process.cwd()
 
 // Configuration for optimization
 const TEMPLATE_DIR = join(BASE_DIR, 'contract-template')
@@ -44,8 +50,7 @@ export async function initializeTemplate() {
     throw new Error(
       'JavaScript/TypeScript compilation is not supported on Windows. ' +
       'near-sdk-js requires a Linux/Mac environment. ' +
-      'This feature will work when deployed to fly.io (Linux). ' +
-      'For local development on Windows, please use Rust for smart contracts.'
+      'This feature will work when deployed to fly.io (Linux).'
     )
   }
 
@@ -66,7 +71,9 @@ export async function initializeTemplate() {
   }
 
   console.log('📦 Initializing contract template directory...')
-  if (isWSL) {
+  if (isFly) {
+    console.log(`   Using persistent volume: ${TEMPLATE_DIR}`)
+  } else if (isWSL) {
     console.log(`   Using WSL-native directory: ${TEMPLATE_DIR}`)
   }
   const startTime = Date.now()
