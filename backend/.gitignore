@@ -30,5 +30,7 @@ test-output/
 backend.pid
 *.pid
 
-# Stray/cache directories
+# Stray/cache directories (npm global, binaryen, etc.)
 ~/
+~\/
+.npm-global/
