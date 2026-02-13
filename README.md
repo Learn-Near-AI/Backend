@@ -37,7 +37,7 @@ backend/
 
 ## Configuration
 
-Configuration is loaded from environment variables. Never commit secrets.
+Configuration is loaded from environment variables.
 
 ### Setup
 
@@ -242,7 +242,7 @@ fly secrets set NEAR_NETWORK=testnet
 
 ## Compile Support
 
-**Rust only.** JavaScript/TypeScript compilation has been removed. The frontend defaults to Rust. Use `language: "Rust"` in compile requests.
+**Rust only.** The frontend defaults to Rust. Use `language: "Rust"` in compile requests.
 
 ---
 
