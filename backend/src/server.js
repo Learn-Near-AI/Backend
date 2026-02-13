@@ -3,9 +3,18 @@ import app from './index.js'
 import { config } from './config/index.js'
 import { logger } from './utils/logger.js'
 import { warmupRustTarget } from './services/compileService.js'
+import { initializeTemplate } from '../build-contract-optimized.js'
 
 async function startServer() {
   const { port, host } = config
+
+  logger.info('Initializing JS contract template...')
+  try {
+    await initializeTemplate()
+    logger.info('JS contract template initialized')
+  } catch (err) {
+    logger.warn({ err: err.message }, 'JS template initialization failed - JS compile may not work')
+  }
 
   app.listen(port, host, () => {
     logger.info(
@@ -18,10 +27,12 @@ async function startServer() {
     )
     logger.info(`  Health:     GET  http://${host}:${port}/api/health`)
     logger.info(`  NEAR:       GET  http://${host}:${port}/api/near/status`)
-    logger.info(`  Compile:    POST http://${host}:${port}/api/compile`)
+logger.info(`  Compile:    POST http://${host}:${port}/api/compile`)
     logger.info(`  Deploy:     POST http://${host}:${port}/api/deploy`)
     logger.info(`  Call:       POST http://${host}:${port}/api/contract/call`)
     logger.info(`  View:       POST http://${host}:${port}/api/contract/view`)
+    logger.info(`  JS Compile: POST http://${host}:${port}/api/js/compile`)
+    logger.info(`  JS Deploy:  POST http://${host}:${port}/api/js/deploy`)
     if (config.nearAccountId) {
       logger.info(`  NEAR account: ${config.nearAccountId} on ${config.nearNetwork}`)
     }

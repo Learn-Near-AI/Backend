@@ -5,6 +5,7 @@ import { config } from './config/index.js'
 import { requestLogger } from './middleware/requestLogger.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import routes from './routes/index.js'
+import jsRoutes from './routes/jsRoutes.js'
 
 const app = express()
 
@@ -31,6 +32,9 @@ app.use(requestLogger)
 
 // API routes - mount at /api for backward compatibility
 app.use('/api', routes)
+
+// JS endpoints (using NEAR CLI)
+app.use('/api', jsRoutes)
 
 // 404 handler
 app.use((req, res, next) => {
