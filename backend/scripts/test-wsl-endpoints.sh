@@ -38,7 +38,7 @@ get_elapsed_ms() { local start=$1; echo $(($(date +%s%3N) - start)); }
 format_time() { local ms=$1; [ $ms -lt 1000 ] && echo "${ms}ms" || echo "$(echo "scale=2; $ms / 1000" | bc)s"; }
 print_header() { echo ""; echo -e "${BLUE}========================================${NC}"; echo -e "${BLUE}$1${NC}"; echo -e "${BLUE}========================================${NC}"; }
 print_timing() { echo -e "${CYAN}⏱  $2: $(format_time $1)${NC}"; }
-print_result() { [ $1 -eq 0 ] && { echo -e "${GREEN}✓ PASSED${NC}: $2"; ((TESTS_PASSED++)); } || { echo -e "${RED}✗ FAILED${NC}: $2"; ((TESTS_FAILED++)); }; }
+print_result() { [ $1 -eq 0 ] && { echo -e "${GREEN}✓ PASSED${NC}: $2"; TESTS_PASSED=$((TESTS_PASSED + 1)); } || { echo -e "${RED}✗ FAILED${NC}: $2"; TESTS_FAILED=$((TESTS_FAILED + 1)); }; }
 
 api_call() {
     local method=$1 endpoint=$2 data=$3 expected=${4:-200}
