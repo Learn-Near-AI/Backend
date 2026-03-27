@@ -43,7 +43,5 @@ test-*.js
 # Temporary files
 backend.pid
 
-# Stray directories (npm global, binaryen, etc.)
-~/
-~\/
+# npm global
 .npm-global/

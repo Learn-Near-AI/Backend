@@ -5,7 +5,7 @@
 #
 # Usage:
 #   ./scripts/test-endpoints.sh
-#   BACKEND_URL=http://localhost:3001 ./scripts/test-endpoints.sh
+#   BACKEND_URL= https://learnnearbyexample.fly.dev ./scripts/test-endpoints.sh
 
 cd "$(dirname "$0")/.."
 
@@ -17,7 +17,7 @@ if [ -f .env ]; then
     set +a
 fi
 
-BACKEND_URL="${BACKEND_URL:-http://localhost:3001}"
+BACKEND_URL="${BACKEND_URL:-https://learnnearbyexample.fly.dev}"
 NEAR_ACCOUNT_ID="${NEAR_ACCOUNT_ID:-}"
 NEAR_NETWORK="${NEAR_NETWORK:-testnet}"
 
